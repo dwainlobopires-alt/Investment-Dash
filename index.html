@@ -1233,34 +1233,34 @@ async function fetchPhase2(sym, phase1) {
 
   // Fire all Finnhub calls in parallel
   const [eps, recs, targets, insiders] = await Promise.all([
-    fh(`/stock/earnings?symbol=${sym}&limit=8`),
+    fh(`/stock/earnings?symbol=${sym}&limit=4`),   // last 4 reported quarters only
     fh(`/stock/recommendation?symbol=${sym}`),
     fh(`/stock/price-target?symbol=${sym}`),
     fh(`/stock/insider-transactions?symbol=${sym}`)
   ]);
 
-  // ── Quarterly EPS chart data ──────────────────────────────────
-  const reported = (eps || []).slice(0, 8).reverse();
-  const epsQuarterly = reported.map(q => ({
-    period:    formatEPSPeriod(q.period || q.year + ' Q' + q.quarter),
+  // ── Reported quarterly EPS (last 4, oldest first) ─────────────
+  const reported = (eps || []).slice(0, 4).reverse();
+
+  // Format period correctly using quarter + year from Finnhub
+  const fmtPeriod = q => `${q.quarter}Q'${String(q.year).slice(2)}`;
+
+  const reportedBars = reported.map(q => ({
+    period:    fmtPeriod(q),
     estimated: q.estimate ?? null,
     reported:  q.actual   ?? null,
     beat:      q.actual != null && q.estimate != null ? q.actual >= q.estimate : null,
-    isFuture:  q.actual == null
+    isFuture:  false
   }));
 
-  // ── Surprise table ────────────────────────────────────────────
-  const surpriseTable = reported
-    .filter(q => q.actual != null)
-    .slice(-4)
-    .reverse()
-    .map(q => ({
-      quarterEnd:   q.period || (q.year + ' Q' + q.quarter),
-      dateReported: q.period || '',
-      actualEPS:    q.actual,
-      estimatedEPS: q.estimate,
-      surprisePct:  q.surprisePercent ?? (q.estimate ? ((q.actual - q.estimate) / Math.abs(q.estimate)) * 100 : null)
-    }));
+  // ── Surprise table (most recent first) ───────────────────────
+  const surpriseTable = [...reported].reverse().map(q => ({
+    quarterEnd:   q.period || `${q.year}-Q${q.quarter}`,
+    dateReported: q.period || '',
+    actualEPS:    q.actual,
+    estimatedEPS: q.estimate,
+    surprisePct:  q.surprisePercent ?? (q.estimate ? ((q.actual - q.estimate) / Math.abs(q.estimate)) * 100 : null)
+  }));
 
   // ── Analyst consensus ─────────────────────────────────────────
   const latestRec = (recs || [])[0] || {};
@@ -1284,8 +1284,7 @@ async function fetchPhase2(sym, phase1) {
   const w52hi = phase1.w52High || price * 1.3;
   const idealLow  = Math.max(w52lo * 1.02, tLow  || price * 0.82);
   const idealHigh = tMean ? Math.min(tMean * 0.96, price * 1.12) : price * 1.08;
-  const downside   = price > w52lo ? (price - w52lo) / price * 100 : 5;
-  const rr         = downside > 0 ? upMean / downside : 0;
+  const downside  = price > w52lo ? (price - w52lo) / price * 100 : 5;
 
   let signal = upMean > 20 && bullPct >= 60 ? 'STRONG BUY'
              : upMean > 8  && bullPct >= 45 ? 'BUY'
@@ -1306,47 +1305,81 @@ async function fetchPhase2(sym, phase1) {
       secUrl: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=${sym}&type=4&dateb=&owner=include&count=10`
     }));
 
-  // ── Gemini for buy zone rationale + yearly forecast ───────────
+  // ── Gemini: forward quarterly estimates + yearly forecast + analysis
   const curr = phase1.currency === 'USD' ? '$' : phase1.currency;
   const fmt  = v => v ? `${curr}${Number(v).toFixed(2)}` : '—';
   const fmtP = v => v != null ? `${v >= 0 ? '+' : ''}${Number(v).toFixed(1)}%` : '—';
 
-  const geminiPrompt = `You are a stock analyst. Based on this real market data for ${sym}:
-- Current price: ${fmt(price)}
-- Analyst mean target: ${fmt(tMean)} (${fmtP(upMean)} upside)
-- Analyst high target: ${fmt(tHigh)} (${fmtP(upHigh)} upside)
-- Analyst ratings: ${sb} Strong Buy, ${b} Buy, ${h} Hold, ${s} Sell, ${ss} Strong Sell
-- 52-week range: ${fmt(w52lo)} – ${fmt(w52hi)}
-- Signal: ${signal}
+  // Figure out what the next 4 quarters should be labelled
+  // based on the last reported quarter
+  const lastQ = reported[reported.length - 1];
+  const nextQuarters = [];
+  if (lastQ) {
+    let q = lastQ.quarter, y = lastQ.year;
+    for (let i = 0; i < 4; i++) {
+      q++; if (q > 4) { q = 1; y++; }
+      nextQuarters.push(`${q}Q'${String(y).slice(2)}`);
+    }
+  }
 
-Return ONLY this JSON (no markdown):
+  const geminiPrompt = `You are a financial analyst providing data for ${sym}.
+
+Last 4 reported quarters (for context): ${reportedBars.map(b => `${b.period}: actual $${b.reported}, est $${b.estimated}`).join(', ')}.
+Current price: ${fmt(price)}, Analyst mean PT: ${fmt(tMean)} (${fmtP(upMean)} upside), High PT: ${fmt(tHigh)}.
+Analyst ratings: ${sb} Strong Buy, ${b} Buy, ${h} Hold, ${s} Sell, ${ss} Strong Sell. Signal: ${signal}.
+
+Return ONLY this JSON object (no markdown, no text outside the JSON):
 {
-  "signalReason": "One sentence explaining the ${signal} signal based on the data.",
-  "buyZoneRationale": "One sentence explaining why $${idealLow.toFixed(0)}-$${idealHigh.toFixed(0)} is the ideal entry range.",
-  "thesis": "2-3 sentences: current valuation vs targets, key catalyst or risk.",
+  "forwardQuarters": [
+    {"period":"${nextQuarters[0]||'2Q\\'26'}","estimated":0.00},
+    {"period":"${nextQuarters[1]||'3Q\\'26'}","estimated":0.00},
+    {"period":"${nextQuarters[2]||'4Q\\'26'}","estimated":0.00},
+    {"period":"${nextQuarters[3]||'1Q\\'27'}","estimated":0.00}
+  ],
   "yearlyForecast": [
-    {"yearEnd":"FY2025","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0},
-    {"yearEnd":"FY2026","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0},
-    {"yearEnd":"FY2027","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0},
-    {"yearEnd":"FY2028","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0}
-  ]
+    {"yearEnd":"Jan 2026","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0},
+    {"yearEnd":"Jan 2027","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0},
+    {"yearEnd":"Jan 2028","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0},
+    {"yearEnd":"Jan 2029","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0}
+  ],
+  "signalReason": "One sentence rationale for the ${signal} signal.",
+  "buyZoneRationale": "One sentence on why ${fmt(idealLow)}-${fmt(idealHigh)} is the ideal entry range.",
+  "thesis": "2 sentences on valuation vs targets and key catalyst or risk."
 }
-For yearlyForecast use your knowledge of analyst EPS consensus estimates for ${sym}. Return ONLY the JSON.`;
+
+IMPORTANT: Use real analyst consensus EPS estimates for ${sym} for BOTH forwardQuarters and yearlyForecast. For yearlyForecast use ${sym}'s actual fiscal year end month and years 2026-2029. Fill in real numbers — do not leave zeros. Return ONLY the JSON.`;
 
   let geminiData = {};
   try {
-    const text = await callGemini(geminiPrompt, 600);
+    const text = await callGemini(geminiPrompt, 900);
     const match = text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
     if (match) geminiData = JSON.parse(match[0]);
   } catch(_) {}
 
+  // ── Combine reported + forward into 8-bar EPS chart ──────────
+  const forwardBars = (geminiData.forwardQuarters || nextQuarters.map((p, i) => ({
+    period: p, estimated: null
+  }))).map(fq => ({
+    period:    fq.period,
+    estimated: fq.estimated ?? null,
+    reported:  null,
+    beat:      null,
+    isFuture:  true
+  }));
+
+  const epsQuarterly = [...reportedBars, ...forwardBars];
+
   return {
     chartData: {
-      sources: ['finnhub.io'],
+      sources: ['finnhub.io + Gemini'],
       dataConfidence: 'high',
       epsQuarterly,
       surpriseTable,
-      yearlyForecast: (geminiData.yearlyForecast || []).map(y => ({...y, revisionsUp: null, revisionsDown: null}))
+      yearlyForecast: (geminiData.yearlyForecast || []).map(y => ({
+        ...y,
+        revisionsUp:   y.revisionsUp   ?? null,
+        revisionsDown: y.revisionsDown ?? null
+      }))
     },
     analystConsensus: {
       strongBuy: sb, buy: b, hold: h, sell: s, strongSell: ss,
