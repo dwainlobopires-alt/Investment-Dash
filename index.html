@@ -1011,8 +1011,7 @@ async function loadTicker(sym) {
   }
 }
 
-// ── PHASE 1: live price + company overview (fast) ─────────────────
-// ── GEMINI KEY (hardcoded) ────────────────────────────────────────
+// ── PHASE 1: Finnhub real-time data + Gemini description ──────────// ── GEMINI KEY (hardcoded) ────────────────────────────────────────
 const HARDCODED_GEMINI_KEY = 'AIzaSyAdIOYRqs2b1i04IO8hk4i7jrYhFLI54cI';
 function getGeminiKey() { return HARDCODED_GEMINI_KEY; }
 function saveGeminiKey() {}
@@ -1056,6 +1055,132 @@ async function fh(path) {
     if (!r.ok) return null;
     return r.json();
   } catch(_) { return null; }
+}
+
+
+// ── INDEX / ETF MEMBERSHIP LOOKUP ────────────────────────────────
+const INDEX_DATA = {
+  'AAPL': [{i:'DJIA',w:'~3.1%'},{i:'S&P 500',w:'~7.2%'},{i:'NASDAQ-100',w:'~8.9%'}],
+  'MSFT': [{i:'DJIA',w:'~5.9%'},{i:'S&P 500',w:'~6.3%'},{i:'NASDAQ-100',w:'~8.1%'}],
+  'NVDA': [{i:'DJIA',w:'~2.2%'},{i:'S&P 500',w:'~6.4%'},{i:'NASDAQ-100',w:'~8.0%'}],
+  'AMZN': [{i:'DJIA',w:'~3.1%'},{i:'S&P 500',w:'~3.6%'},{i:'NASDAQ-100',w:'~5.0%'}],
+  'GOOGL':[{i:'S&P 500',w:'~2.0%'},{i:'NASDAQ-100',w:'~4.8%'}],
+  'GOOG': [{i:'S&P 500',w:'~1.7%'},{i:'NASDAQ-100',w:'~4.1%'}],
+  'META': [{i:'S&P 500',w:'~2.5%'},{i:'NASDAQ-100',w:'~5.2%'}],
+  'TSLA': [{i:'S&P 500',w:'~1.2%'},{i:'NASDAQ-100',w:'~4.0%'}],
+  'AVGO': [{i:'S&P 500',w:'~1.7%'},{i:'NASDAQ-100',w:'~4.3%'}],
+  'GS':   [{i:'DJIA',w:'~8.3%'},{i:'S&P 500',w:'~0.3%'}],
+  'UNH':  [{i:'DJIA',w:'~7.1%'},{i:'S&P 500',w:'~0.5%'}],
+  'HD':   [{i:'DJIA',w:'~5.8%'},{i:'S&P 500',w:'~0.4%'}],
+  'SHW':  [{i:'DJIA',w:'~5.0%'},{i:'S&P 500',w:'~0.3%'}],
+  'CAT':  [{i:'DJIA',w:'~4.8%'},{i:'S&P 500',w:'~0.3%'}],
+  'MCD':  [{i:'DJIA',w:'~4.6%'},{i:'S&P 500',w:'~0.4%'}],
+  'AMGN': [{i:'DJIA',w:'~4.4%'},{i:'S&P 500',w:'~0.3%'},{i:'NASDAQ-100',w:'~1.5%'}],
+  'HON':  [{i:'DJIA',w:'~3.8%'},{i:'S&P 500',w:'~0.3%'}],
+  'AXP':  [{i:'DJIA',w:'~3.7%'},{i:'S&P 500',w:'~0.5%'}],
+  'CRM':  [{i:'DJIA',w:'~3.4%'},{i:'S&P 500',w:'~0.4%'},{i:'NASDAQ-100',w:'~1.2%'}],
+  'TRV':  [{i:'DJIA',w:'~3.3%'},{i:'S&P 500',w:'~0.2%'}],
+  'V':    [{i:'DJIA',w:'~3.9%'},{i:'S&P 500',w:'~1.1%'}],
+  'JPM':  [{i:'DJIA',w:'~3.2%'},{i:'S&P 500',w:'~1.3%'}],
+  'WMT':  [{i:'DJIA',w:'~2.7%'},{i:'S&P 500',w:'~0.8%'}],
+  'IBM':  [{i:'DJIA',w:'~2.9%'},{i:'S&P 500',w:'~0.3%'}],
+  'JNJ':  [{i:'DJIA',w:'~2.6%'},{i:'S&P 500',w:'~0.7%'}],
+  'MRK':  [{i:'DJIA',w:'~2.5%'},{i:'S&P 500',w:'~0.5%'}],
+  'BA':   [{i:'DJIA',w:'~2.0%'},{i:'S&P 500',w:'~0.2%'}],
+  'CVX':  [{i:'DJIA',w:'~2.0%'},{i:'S&P 500',w:'~0.6%'}],
+  'DIS':  [{i:'DJIA',w:'~1.6%'},{i:'S&P 500',w:'~0.3%'}],
+  'NKE':  [{i:'DJIA',w:'~1.4%'},{i:'S&P 500',w:'~0.2%'}],
+  'KO':   [{i:'DJIA',w:'~1.1%'},{i:'S&P 500',w:'~0.6%'}],
+  'MMM':  [{i:'DJIA',w:'~1.8%'},{i:'S&P 500',w:'~0.1%'}],
+  'VZ':   [{i:'DJIA',w:'~0.8%'},{i:'S&P 500',w:'~0.3%'}],
+  'DOW':  [{i:'DJIA',w:'~0.9%'},{i:'S&P 500',w:'~0.1%'}],
+  'INTC': [{i:'DJIA',w:'~0.7%'},{i:'S&P 500',w:'~0.1%'},{i:'NASDAQ-100',w:'~0.4%'}],
+  'COST': [{i:'S&P 500',w:'~0.8%'},{i:'NASDAQ-100',w:'~2.8%'}],
+  'NFLX': [{i:'S&P 500',w:'~0.7%'},{i:'NASDAQ-100',w:'~2.4%'}],
+  'ADBE': [{i:'S&P 500',w:'~0.4%'},{i:'NASDAQ-100',w:'~1.3%'}],
+  'AMD':  [{i:'S&P 500',w:'~0.3%'},{i:'NASDAQ-100',w:'~1.2%'}],
+  'QCOM': [{i:'S&P 500',w:'~0.3%'},{i:'NASDAQ-100',w:'~1.1%'}],
+  'INTU': [{i:'S&P 500',w:'~0.4%'},{i:'NASDAQ-100',w:'~1.5%'}],
+  'AMAT': [{i:'S&P 500',w:'~0.3%'},{i:'NASDAQ-100',w:'~1.0%'}],
+  'CSCO': [{i:'S&P 500',w:'~0.4%'},{i:'NASDAQ-100',w:'~1.4%'}],
+  'BKNG': [{i:'S&P 500',w:'~0.3%'},{i:'NASDAQ-100',w:'~1.0%'}],
+  'NOW':  [{i:'S&P 500',w:'~0.4%'},{i:'NASDAQ-100',w:'~1.2%'}],
+  'ISRG': [{i:'S&P 500',w:'~0.3%'},{i:'NASDAQ-100',w:'~1.0%'}],
+  'VRTX': [{i:'S&P 500',w:'~0.3%'},{i:'NASDAQ-100',w:'~1.2%'}],
+  'REGN': [{i:'S&P 500',w:'~0.3%'},{i:'NASDAQ-100',w:'~0.9%'}],
+  'LRCX': [{i:'S&P 500',w:'~0.2%'},{i:'NASDAQ-100',w:'~0.8%'}],
+  'PANW': [{i:'S&P 500',w:'~0.2%'},{i:'NASDAQ-100',w:'~0.7%'}],
+  'MU':   [{i:'S&P 500',w:'~0.2%'},{i:'NASDAQ-100',w:'~0.8%'}],
+  'PLTR': [{i:'S&P 500',w:'~0.2%'},{i:'NASDAQ-100',w:'~0.7%'}],
+  'APP':  [{i:'NASDAQ-100',w:'~0.5%'}],
+  'ASML': [{i:'NASDAQ-100',w:'~0.8%'}],
+  'ARM':  [{i:'NASDAQ-100',w:'~0.6%'}],
+  'MRVL': [{i:'S&P 500',w:'~0.2%'},{i:'NASDAQ-100',w:'~0.7%'}],
+  'SHOP': [{i:'S&P 500',w:'~0.2%'},{i:'NASDAQ-100',w:'~0.6%'}],
+  'CRWD': [{i:'S&P 500',w:'~0.2%'},{i:'NASDAQ-100',w:'~0.6%'}],
+  'MELI': [{i:'NASDAQ-100',w:'~0.6%'}],
+  'ABNB': [{i:'NASDAQ-100',w:'~0.4%'}],
+  'DDOG': [{i:'NASDAQ-100',w:'~0.4%'}],
+  'LLY':  [{i:'S&P 500',w:'~1.5%'}],
+  'XOM':  [{i:'S&P 500',w:'~0.9%'}],
+  'BAC':  [{i:'S&P 500',w:'~0.7%'}],
+  'PG':   [{i:'S&P 500',w:'~0.8%'}],
+  'ABBV': [{i:'S&P 500',w:'~0.6%'}],
+  'ORCL': [{i:'S&P 500',w:'~0.6%'}],
+  'WFC':  [{i:'S&P 500',w:'~0.4%'}],
+  'PEP':  [{i:'S&P 500',w:'~0.5%'}],
+  'ACN':  [{i:'S&P 500',w:'~0.4%'}],
+  'MA':   [{i:'S&P 500',w:'~0.9%'}],
+  'TMO':  [{i:'S&P 500',w:'~0.4%'}],
+  'MS':   [{i:'S&P 500',w:'~0.3%'}],
+  'RTX':  [{i:'S&P 500',w:'~0.3%'}],
+  'LMT':  [{i:'S&P 500',w:'~0.3%'}],
+  'BX':   [{i:'S&P 500',w:'~0.3%'}],
+  'UBER': [{i:'S&P 500',w:'~0.3%'}],
+  'NEE':  [{i:'S&P 500',w:'~0.4%'}],
+  'LOW':  [{i:'S&P 500',w:'~0.4%'}],
+  'GE':   [{i:'S&P 500',w:'~0.3%'}],
+  'ETN':  [{i:'S&P 500',w:'~0.3%'}],
+  'SPGI': [{i:'S&P 500',w:'~0.3%'}],
+  'CI':   [{i:'S&P 500',w:'~0.3%'}],
+  'BRK.B':[{i:'S&P 500',w:'~1.5%'}],
+  'TXN':  [{i:'S&P 500',w:'~0.3%'}],
+  'DE':   [{i:'S&P 500',w:'~0.3%'}],
+  'SYK':  [{i:'S&P 500',w:'~0.3%'}],
+  'GILD': [{i:'S&P 500',w:'~0.2%'}],
+  'COP':  [{i:'S&P 500',w:'~0.3%'}],
+  'ADI':  [{i:'S&P 500',w:'~0.2%'},{i:'NASDAQ-100',w:'~0.7%'}],
+  'TSM':  [{i:'S&P 500 (ADR)',w:'~0.3%'}],
+  'F':    [{i:'S&P 500',w:'~0.1%'}],
+  'GM':   [{i:'S&P 500',w:'~0.1%'}],
+  'DAL':  [{i:'S&P 500',w:'~0.1%'}],
+  'CCL':  [{i:'S&P 500',w:'~0.1%'}],
+  'MAR':  [{i:'S&P 500',w:'~0.2%'}],
+  'SNOW': [{i:'S&P 500',w:'~0.1%'}],
+  'NET':  [{i:'S&P 500',w:'~0.1%'}],
+  'COIN': [{i:'S&P 500',w:'~0.1%'}],
+  'CVS':  [{i:'S&P 500',w:'~0.2%'}],
+  'AMT':  [{i:'S&P 500',w:'~0.2%'}],
+  'KKR':  [{i:'S&P 500',w:'~0.2%'}],
+  'MRNA': [{i:'S&P 500',w:'~0.1%'}],
+  'BIIB': [{i:'S&P 500',w:'~0.1%'}],
+  'SLB':  [{i:'S&P 500',w:'~0.2%'}],
+  'AIG':  [{i:'S&P 500',w:'~0.1%'}],
+  'WM':   [{i:'S&P 500',w:'~0.2%'}],
+  'USB':  [{i:'S&P 500',w:'~0.1%'}],
+  'PNC':  [{i:'S&P 500',w:'~0.2%'}],
+  'GD':   [{i:'S&P 500',w:'~0.2%'}],
+  'HCA':  [{i:'S&P 500',w:'~0.2%'}],
+  'MCO':  [{i:'S&P 500',w:'~0.2%'}],
+  'ENPH': [{i:'S&P 500',w:'~0.1%'},{i:'NASDAQ-100',w:'~0.2%'}],
+  'FSLR': [{i:'S&P 500',w:'~0.1%'}],
+};
+
+function getIndexMembership(sym) {
+  const entries = INDEX_DATA[sym.toUpperCase()];
+  if (!entries || !entries.length) return '';
+  const parts = entries.map(function(e) { return e.i + ' (' + e.w + ')'; });
+  return 'It is a component of the ' + parts.join(', ') + '. Weights are approximate.';
 }
 
 // ── PHASE 1: Finnhub real-time data + Gemini description ──────────
@@ -1108,6 +1233,10 @@ async function fetchPhase1(sym) {
   if (!description) {
     description = (profile?.name || sym) + ' is a publicly traded company listed on ' + (profile?.exchange || 'a major exchange') + ' in the ' + (profile?.finnhubIndustry || 'financial') + ' sector.';
   }
+
+  // Append index/ETF membership
+  const indexInfo = getIndexMembership(sym);
+  if (indexInfo) description += ' ' + indexInfo;
 
   return {
     name:        profile?.name || sym,
