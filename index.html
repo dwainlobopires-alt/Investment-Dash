@@ -1092,14 +1092,28 @@ async function fetchPhase1(sym) {
     ? formatMktCap(profile.marketCapitalization)
     : null;
 
-  // Gemini for description only (no search needed — it knows these companies)
-  const geminiPrompt = `Write a 2-3 sentence plain-English description of what ${profile?.name || sym} does — its main products/services and market position. Be factual and concise. Return ONLY the description text, nothing else.`;
+  // Get company description from Wikipedia (free, no key, CORS-enabled)
   let description = '';
   try {
-    description = await callGemini(geminiPrompt, 200);
-    description = description.trim();
-  } catch(_) {
-    description = `${profile?.name || sym} is a publicly traded company listed on ${profile?.exchange || 'a major exchange'}.`;
+    // Clean company name for Wikipedia search
+    const searchName = (profile?.name || sym)
+      .replace(/\s+(Corp\.?|Inc\.?|Ltd\.?|LLC|plc|N\.V\.|SE|AG|S\.A\.|Holdings?|Group|Co\.?)$/i, '')
+      .trim();
+    const wikiUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(searchName)}`;
+    const wikiRes = await fetch(wikiUrl);
+    if (wikiRes.ok) {
+      const wikiData = await wikiRes.json();
+      if (wikiData.extract && wikiData.type !== 'disambiguation') {
+        // Take first 2 sentences max
+        const sentences = wikiData.extract.match(/[^.!?]+[.!?]+/g) || [];
+        description = sentences.slice(0, 2).join(' ').trim();
+      }
+    }
+  } catch(_) {}
+
+  // Fallback if Wikipedia didn't return anything
+  if (!description) {
+    description = `${profile?.name || sym} is a publicly traded company listed on ${profile?.exchange || 'a major exchange'} in the ${profile?.finnhubIndustry || 'financial'} sector.`;
   }
 
   return {
