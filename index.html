@@ -800,6 +800,9 @@ main {
         placeholder="Search ticker — e.g. AAPL, NVDA, TSLA"
         autocomplete="off"
         spellcheck="false"
+        oninput="onSearchInput()"
+        onkeydown="onSearchKey(event)"
+        onfocus="onSearchFocus()"
       >
       <span class="search-kbd" id="searchKbd">↵ to search</span>
     </div>
@@ -1870,12 +1873,12 @@ function loadTV(sym) {
 refreshKeyBanner();
 renderWatchlistPills();
 
-// Wire up search input via addEventListener (more reliable than inline handlers)
-const _si = document.getElementById('searchInput');
-if (_si) {
-  _si.addEventListener('input', onSearchInput);
-  _si.addEventListener('keydown', onSearchKey);
-  _si.addEventListener('focus', onSearchFocus);
+// Auto-load last viewed ticker
+if (watchlist.length > 0) {
+  const last = watchlist[watchlist.length - 1];
+  activeSym = last;
+  renderWatchlistPills();
+  loadTicker(last);
 }
 
 // Auto-load last viewed ticker if watchlist exists
