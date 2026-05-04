@@ -800,9 +800,6 @@ main {
         placeholder="Search ticker — e.g. AAPL, NVDA, TSLA"
         autocomplete="off"
         spellcheck="false"
-        oninput="onSearchInput()"
-        onkeydown="onSearchKey(event)"
-        onfocus="onSearchFocus()"
       >
       <span class="search-kbd" id="searchKbd">↵ to search</span>
     </div>
@@ -1133,10 +1130,10 @@ async function fetchPhase2(sym, phase1) {
 
   // Fire all Finnhub calls in parallel
   const [eps, recs, targets, insiders] = await Promise.all([
-    fh(`/stock/earnings?symbol=${sym}&limit=8`),
+    fh(`/stock/earnings?symbol=${sym}&limit=4`),   // last 4 reported quarters only
     fh(`/stock/recommendation?symbol=${sym}`),
     fh(`/stock/price-target?symbol=${sym}`),
-    fh(`/stock/insider-transactions?symbol=${sym}`),
+    fh(`/stock/insider-transactions?symbol=${sym}`)
   ]);
 
   // ── Reported quarterly EPS (last 4, oldest first) ─────────────
@@ -1222,31 +1219,36 @@ async function fetchPhase2(sym, phase1) {
     }
   }
 
-  const fwdLabels = nextQuarters.length >= 4 ? nextQuarters : ['2Q\'26','3Q\'26','4Q\'26','1Q\'27'];
   const geminiPrompt = `You are a financial analyst providing data for ${sym}.
 
-Last 4 reported quarters (for context): ${reportedBars.map(b => b.period + ': actual $' + b.reported + ', est $' + b.estimated).join(', ')}.
+Last 4 reported quarters (for context): ${reportedBars.map(b => `${b.period}: actual $${b.reported}, est $${b.estimated}`).join(', ')}.
 Current price: ${fmt(price)}, Analyst mean PT: ${fmt(tMean)} (${fmtP(upMean)} upside), High PT: ${fmt(tHigh)}.
 Analyst ratings: ${sb} Strong Buy, ${b} Buy, ${h} Hold, ${s} Sell, ${ss} Strong Sell. Signal: ${signal}.
 
 Return ONLY this JSON object (no markdown, no text outside the JSON):
 {
   "forwardQuarters": [
-    {"period":"${fwdLabels[0]}","estimated":0.00},
-    {"period":"${fwdLabels[1]}","estimated":0.00},
-    {"period":"${fwdLabels[2]}","estimated":0.00},
-    {"period":"${fwdLabels[3]}","estimated":0.00}
+    {"period":"${nextQuarters[0]||'2Q\\'26'}","estimated":0.00},
+    {"period":"${nextQuarters[1]||'3Q\\'26'}","estimated":0.00},
+    {"period":"${nextQuarters[2]||'4Q\\'26'}","estimated":0.00},
+    {"period":"${nextQuarters[3]||'1Q\\'27'}","estimated":0.00}
+  ],
+  "yearlyForecast": [
+    {"yearEnd":"Jan 2026","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0},
+    {"yearEnd":"Jan 2027","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0},
+    {"yearEnd":"Jan 2028","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0},
+    {"yearEnd":"Jan 2029","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0}
   ],
   "signalReason": "One sentence rationale for the ${signal} signal.",
   "buyZoneRationale": "One sentence on why ${fmt(idealLow)}-${fmt(idealHigh)} is the ideal entry range.",
   "thesis": "2 sentences on valuation vs targets and key catalyst or risk."
 }
 
-IMPORTANT: Use real analyst consensus EPS estimates for ${sym} for forwardQuarters. Return ONLY the JSON.`;
+IMPORTANT: Use real analyst consensus EPS estimates for ${sym} for BOTH forwardQuarters and yearlyForecast. For yearlyForecast use ${sym}'s actual fiscal year end month and years 2026-2029. Fill in real numbers — do not leave zeros. Return ONLY the JSON.`;
 
   let geminiData = {};
   try {
-    const text = await callGemini(geminiPrompt, 1200);
+    const text = await callGemini(geminiPrompt, 900);
     const match = text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
     if (match) geminiData = JSON.parse(match[0]);
   } catch(_) {}
@@ -1266,10 +1268,15 @@ IMPORTANT: Use real analyst consensus EPS estimates for ${sym} for forwardQuarte
 
   return {
     chartData: {
-      sources: ['finnhub.io'],
+      sources: ['finnhub.io + Gemini'],
       dataConfidence: 'high',
       epsQuarterly,
       surpriseTable,
+      yearlyForecast: (geminiData.yearlyForecast || []).map(y => ({
+        ...y,
+        revisionsUp:   y.revisionsUp   ?? null,
+        revisionsDown: y.revisionsDown ?? null
+      }))
     },
     analystConsensus: {
       strongBuy: sb, buy: b, hold: h, sell: s, strongSell: ss,
@@ -1493,6 +1500,21 @@ function renderChartsHTML(sym, cd, d) {
       </td>
     </tr>`;
   }).join('');
+
+  const forecastRows = (cd.yearlyForecast || []).map(r => `<tr>
+    <td>${r.yearEnd}</td>
+    <td class="mono">${r.consensus != null ? r.consensus.toFixed(2) : '—'}</td>
+    <td class="mono">${r.high != null ? r.high.toFixed(2) : '—'}</td>
+    <td class="mono">${r.low != null ? r.low.toFixed(2) : '—'}</td>
+    <td class="mono">${r.numEstimates ?? '—'}</td>
+    <td class="mono" style="color:${r.revisionsUp > 0 ? '#166534' : 'inherit'}">
+      ${r.revisionsUp != null ? r.revisionsUp : '<span style="color:var(--txt3);font-size:11px">n/a</span>'}
+    </td>
+    <td class="mono" style="color:${r.revisionsDown > 0 ? '#991b1b' : 'inherit'}">
+      ${r.revisionsDown != null ? r.revisionsDown : '<span style="color:var(--txt3);font-size:11px">n/a</span>'}
+    </td>
+  </tr>`).join('');
+
   return `
     <!-- EPS BAR CHART -->
     <div class="chart-card">
@@ -1529,16 +1551,15 @@ function renderChartsHTML(sym, cd, d) {
       </table>
     </div>
 
-    <!-- YEARLY FORECAST — LINK TO NASDAQ -->
-    <div class="chart-card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <!-- YEARLY FORECAST — NASDAQ LINK -->
+    <div class="chart-card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
       <div>
         <div class="chart-card-title" style="margin-bottom:6px">Yearly Earnings Forecast</div>
         <div style="font-size:13px;color:var(--txt3)">View full analyst EPS forecasts, revision counts and consensus estimates on NASDAQ.</div>
       </div>
       <a href="https://www.nasdaq.com/market-activity/stocks/${sym.toLowerCase()}/earnings"
         target="_blank"
-        style="display:inline-flex;align-items:center;gap:8px;padding:11px 20px;background:var(--accent);color:white;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;white-space:nowrap;transition:background .15s"
-        onmouseover="this.style.background='#1d4ed8'" onmouseout="this.style.background='var(--accent)'">
+        style="display:inline-flex;align-items:center;gap:8px;padding:12px 22px;background:var(--accent);color:white;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;white-space:nowrap;flex-shrink:0">
         View ${sym} Earnings on NASDAQ ↗
       </a>
     </div>
@@ -1834,12 +1855,12 @@ function loadTV(sym) {
 refreshKeyBanner();
 renderWatchlistPills();
 
-// Auto-load last viewed ticker
-if (watchlist.length > 0) {
-  const last = watchlist[watchlist.length - 1];
-  activeSym = last;
-  renderWatchlistPills();
-  loadTicker(last);
+// Wire up search input via addEventListener (more reliable than inline handlers)
+const _si = document.getElementById('searchInput');
+if (_si) {
+  _si.addEventListener('input', onSearchInput);
+  _si.addEventListener('keydown', onSearchKey);
+  _si.addEventListener('focus', onSearchFocus);
 }
 
 // Auto-load last viewed ticker if watchlist exists
