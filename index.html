@@ -1122,130 +1122,273 @@ function refreshKeyBanner() {
   }
 }
 
-// ── GEMINI API HELPER ─────────────────────────────────────────────
+// ── GEMINI HELPER (no search tool — uses free tier) ───────────────
 async function callGemini(prompt, maxTokens) {
   const key = getGeminiKey();
   if (!key) throw new Error('No Gemini API key set. Paste your free key in the banner above.');
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
+  // Use gemini-1.5-flash — confirmed free tier, no search tool needed
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
 
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      tools: [{ google_search: {} }],
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: maxTokens || 1024
-      }
+      generationConfig: { temperature: 0.1, maxOutputTokens: maxTokens || 1024 }
     })
   });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    const msg = err?.error?.message || `Gemini API error ${res.status}`;
-    throw new Error(msg);
+    throw new Error(err?.error?.message || `Gemini error ${res.status}`);
   }
 
   const json = await res.json();
-  // Extract all text parts from the response
-  const text = (json.candidates?.[0]?.content?.parts || [])
-    .map(p => p.text || '').join('');
-
+  const text = (json.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
   if (!text) throw new Error('No response from Gemini. Try again.');
   return text;
 }
 
-// ── PHASE 1: live price + company overview ────────────────────────
+// ── FINNHUB HELPER ────────────────────────────────────────────────
+const FH_BASE = 'https://finnhub.io/api/v1';
+async function fh(path) {
+  try {
+    const sep = path.includes('?') ? '&' : '?';
+    const r = await fetch(`${FH_BASE}${path}${sep}token=${FINNHUB_KEY}`);
+    if (!r.ok) return null;
+    return r.json();
+  } catch(_) { return null; }
+}
+
+// ── PHASE 1: Finnhub real-time data + Gemini description ──────────
 async function fetchPhase1(sym) {
-  const prompt = `Search the web right now for current stock data for ticker "${sym}".
+  // Fire all Finnhub calls in parallel
+  const [quote, profile, metrics, earnings_cal] = await Promise.all([
+    fh(`/quote?symbol=${sym}`),
+    fh(`/stock/profile2?symbol=${sym}`),
+    fh(`/stock/metric?symbol=${sym}&metric=all`),
+    fh(`/calendar/earnings?symbol=${sym}&from=${today()}&to=${future(120)}`)
+  ]);
 
-Find: current stock price, trailing P/E ratio, forward P/E ratio, next earnings date, market cap.
-Use your knowledge for: company name, description, sector, industry, exchange, employee count.
+  if (!quote?.c) throw new Error(`Ticker "${sym}" not found on Finnhub. Check the symbol and try again.`);
 
-Return ONLY this JSON (absolutely no markdown, no backticks, no explanation):
-{
-  "name": "Full Company Name",
-  "ticker": "${sym}",
-  "sector": "Sector",
-  "industry": "Industry",
-  "exchange": "NASDAQ",
-  "currency": "USD",
-  "price": 0.00,
-  "prevClose": 0.00,
-  "description": "2-3 sentence plain-English description of what this company does.",
-  "peRatioTrailing": 0.0,
-  "peRatioForward": 0.0,
-  "nextEarningsDate": "Mon DD, YYYY",
-  "nextEarningsTime": "After Market Close",
-  "marketCap": "~$XXXb",
-  "employees": "~XX,000"
+  const price     = quote.c;
+  const prevClose = quote.pc || price;
+  const m         = metrics?.metric || {};
+  const peTrail   = m.peBasicExclExtraTTM || m.peTTM || null;
+  const peFwd     = m.forwardPE || null;
+  const w52hi     = m['52WeekHigh'] || null;
+  const w52lo     = m['52WeekLow']  || null;
+  const currency  = profile?.currency || 'USD';
+  const curr      = currency === 'USD' ? '$' : currency;
+
+  // Next earnings date from calendar
+  const nextEarnings = earnings_cal?.earningsCalendar?.[0];
+  const nextEarningsDate = nextEarnings?.date
+    ? new Date(nextEarnings.date).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })
+    : 'TBD';
+  const nextEarningsTime = nextEarnings?.hour === 'bmo' ? 'Before Market Open'
+    : nextEarnings?.hour === 'amc' ? 'After Market Close' : 'Time Not Confirmed';
+
+  const mktCap = profile?.marketCapitalization
+    ? formatMktCap(profile.marketCapitalization)
+    : null;
+
+  // Gemini for description only (no search needed — it knows these companies)
+  const geminiPrompt = `Write a 2-3 sentence plain-English description of what ${profile?.name || sym} does — its main products/services and market position. Be factual and concise. Return ONLY the description text, nothing else.`;
+  let description = '';
+  try {
+    description = await callGemini(geminiPrompt, 200);
+    description = description.trim();
+  } catch(_) {
+    description = `${profile?.name || sym} is a publicly traded company listed on ${profile?.exchange || 'a major exchange'}.`;
+  }
+
+  return {
+    name:        profile?.name || sym,
+    ticker:      sym,
+    sector:      profile?.finnhubIndustry || profile?.gics_sector || '',
+    industry:    profile?.gics_sub_industry || profile?.finnhubIndustry || '',
+    exchange:    profile?.exchange || '',
+    currency,
+    price:       `${curr}${price.toFixed(2)}`,
+    priceRaw:    price,
+    prevClose,
+    w52High:     w52hi,
+    w52Low:      w52lo,
+    description,
+    peRatioTrailing: peTrail ? parseFloat(peTrail.toFixed(1)) : null,
+    peRatioForward:  peFwd  ? parseFloat(peFwd.toFixed(1))  : null,
+    nextEarningsDate,
+    nextEarningsTime,
+    marketCap:   mktCap,
+    employees:   profile?.employeeTotal ? profile.employeeTotal.toLocaleString() : null,
+  };
 }
-CRITICAL: price, peRatioTrailing, peRatioForward, nextEarningsDate must be real current values from your web search. Return ONLY the raw JSON object — no markdown fences, no text before or after.`;
 
-  const text = await callGemini(prompt, 800);
-  const match = text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('Could not parse Gemini response. Please try again.');
-  return JSON.parse(match[0]);
-}
-
-// ── PHASE 2: EPS, analysts, Form 4 (background) ──────────────────
+// ── PHASE 2: Finnhub earnings/analysts/insiders + Gemini analysis ─
 async function fetchPhase2(sym, phase1) {
-  const price = phase1.price || 0;
-  const prompt = `Search the web for detailed financial data for stock ticker "${sym}" (current price ~$${price}).
+  const price = phase1.priceRaw || 0;
 
-Find: quarterly EPS history (actual vs estimated, last 4-8 quarters), forward EPS estimates, annual EPS forecasts for FY2026-FY2029, analyst price targets and Buy/Hold/Sell ratings breakdown, recent SEC Form 4 insider transactions.
+  // Fire all Finnhub calls in parallel
+  const [eps, recs, targets, insiders] = await Promise.all([
+    fh(`/stock/earnings?symbol=${sym}&limit=8`),
+    fh(`/stock/recommendation?symbol=${sym}`),
+    fh(`/stock/price-target?symbol=${sym}`),
+    fh(`/stock/insider-transactions?symbol=${sym}`)
+  ]);
 
-Return ONLY this raw JSON (no markdown, no backticks, no explanation):
+  // ── Quarterly EPS chart data ──────────────────────────────────
+  const reported = (eps || []).slice(0, 8).reverse();
+  const epsQuarterly = reported.map(q => ({
+    period:    formatEPSPeriod(q.period || q.year + ' Q' + q.quarter),
+    estimated: q.estimate ?? null,
+    reported:  q.actual   ?? null,
+    beat:      q.actual != null && q.estimate != null ? q.actual >= q.estimate : null,
+    isFuture:  q.actual == null
+  }));
+
+  // ── Surprise table ────────────────────────────────────────────
+  const surpriseTable = reported
+    .filter(q => q.actual != null)
+    .slice(-4)
+    .reverse()
+    .map(q => ({
+      quarterEnd:   q.period || (q.year + ' Q' + q.quarter),
+      dateReported: q.period || '',
+      actualEPS:    q.actual,
+      estimatedEPS: q.estimate,
+      surprisePct:  q.surprisePercent ?? (q.estimate ? ((q.actual - q.estimate) / Math.abs(q.estimate)) * 100 : null)
+    }));
+
+  // ── Analyst consensus ─────────────────────────────────────────
+  const latestRec = (recs || [])[0] || {};
+  const sb = latestRec.strongBuy  || 0;
+  const b  = latestRec.buy        || 0;
+  const h  = latestRec.hold       || 0;
+  const s  = latestRec.sell       || 0;
+  const ss = latestRec.strongSell || 0;
+  const total = sb + b + h + s + ss || 1;
+  const bullPct = Math.round((sb + b) / total * 100);
+  const neuPct  = Math.round(h / total * 100);
+  const bearPct = 100 - bullPct - neuPct;
+
+  const tLow  = targets?.targetLow  || 0;
+  const tMean = targets?.targetMean || 0;
+  const tHigh = targets?.targetHigh || 0;
+  const upMean = tMean && price ? ((tMean / price) - 1) * 100 : 0;
+  const upHigh = tHigh && price ? ((tHigh / price) - 1) * 100 : 0;
+
+  const w52lo = phase1.w52Low  || price * 0.7;
+  const w52hi = phase1.w52High || price * 1.3;
+  const idealLow  = Math.max(w52lo * 1.02, tLow  || price * 0.82);
+  const idealHigh = tMean ? Math.min(tMean * 0.96, price * 1.12) : price * 1.08;
+  const downside   = price > w52lo ? (price - w52lo) / price * 100 : 5;
+  const rr         = downside > 0 ? upMean / downside : 0;
+
+  let signal = upMean > 20 && bullPct >= 60 ? 'STRONG BUY'
+             : upMean > 8  && bullPct >= 45 ? 'BUY'
+             : upMean > 0  && bullPct >= 35 ? 'HOLD' : 'WAIT';
+
+  // ── Insider transactions ──────────────────────────────────────
+  const inTx = ((insiders?.data || insiders || []))
+    .filter(t => t.transactionPrice > 0)
+    .slice(0, 6)
+    .map(t => ({
+      filingDate:      t.filingDate || t.transactionDate || '',
+      insiderName:     t.name || '—',
+      insiderTitle:    t.position || t.title || '—',
+      transactionType: t.change > 0 ? 'Purchase' : 'Sale',
+      shares:          Math.abs(t.change || 0),
+      pricePerShare:   t.transactionPrice || 0,
+      totalValue:      Math.abs(t.change || 0) * (t.transactionPrice || 0),
+      secUrl: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=${sym}&type=4&dateb=&owner=include&count=10`
+    }));
+
+  // ── Gemini for buy zone rationale + yearly forecast ───────────
+  const curr = phase1.currency === 'USD' ? '$' : phase1.currency;
+  const fmt  = v => v ? `${curr}${Number(v).toFixed(2)}` : '—';
+  const fmtP = v => v != null ? `${v >= 0 ? '+' : ''}${Number(v).toFixed(1)}%` : '—';
+
+  const geminiPrompt = `You are a stock analyst. Based on this real market data for ${sym}:
+- Current price: ${fmt(price)}
+- Analyst mean target: ${fmt(tMean)} (${fmtP(upMean)} upside)
+- Analyst high target: ${fmt(tHigh)} (${fmtP(upHigh)} upside)
+- Analyst ratings: ${sb} Strong Buy, ${b} Buy, ${h} Hold, ${s} Sell, ${ss} Strong Sell
+- 52-week range: ${fmt(w52lo)} – ${fmt(w52hi)}
+- Signal: ${signal}
+
+Return ONLY this JSON (no markdown):
 {
-  "chartData": {
-    "sources": ["finance.yahoo.com"],
-    "dataConfidence": "high",
-    "epsQuarterly": [
-      {"period": "2Q'25","estimated":0.00,"reported":0.00,"beat":true,"isFuture":false},
-      {"period": "3Q'25","estimated":0.00,"reported":0.00,"beat":true,"isFuture":false},
-      {"period": "4Q'25","estimated":0.00,"reported":0.00,"beat":true,"isFuture":false},
-      {"period": "1Q'26","estimated":0.00,"reported":0.00,"beat":true,"isFuture":false},
-      {"period": "2Q'26","estimated":0.00,"reported":null,"beat":null,"isFuture":true},
-      {"period": "3Q'26","estimated":0.00,"reported":null,"beat":null,"isFuture":true},
-      {"period": "4Q'26","estimated":0.00,"reported":null,"beat":null,"isFuture":true},
-      {"period": "1Q'27","estimated":0.00,"reported":null,"beat":null,"isFuture":true}
-    ],
-    "surpriseTable": [
-      {"quarterEnd":"Jan 2026","dateReported":"2/25/2026","actualEPS":0.00,"estimatedEPS":0.00,"surprisePct":0.00},
-      {"quarterEnd":"Oct 2025","dateReported":"11/19/2025","actualEPS":0.00,"estimatedEPS":0.00,"surprisePct":0.00},
-      {"quarterEnd":"Jul 2025","dateReported":"8/27/2025","actualEPS":0.00,"estimatedEPS":0.00,"surprisePct":0.00},
-      {"quarterEnd":"Apr 2025","dateReported":"5/28/2025","actualEPS":0.00,"estimatedEPS":0.00,"surprisePct":0.00}
-    ],
-    "yearlyForecast": [
-      {"yearEnd":"FY2026","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":null,"revisionsDown":null},
-      {"yearEnd":"FY2027","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":null,"revisionsDown":null},
-      {"yearEnd":"FY2028","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":null,"revisionsDown":null},
-      {"yearEnd":"FY2029","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":null,"revisionsDown":null}
-    ]
-  },
-  "analystConsensus": {
-    "strongBuy":0,"buy":0,"hold":0,"sell":0,"strongSell":0,"totalAnalysts":0,
-    "consensusRating":"Buy","priceTargetLow":0.00,"priceTargetMean":0.00,"priceTargetHigh":0.00,
-    "upsideToMean":0.0,"upsideToHigh":0.0,
-    "idealBuyZoneLow":0.00,"idealBuyZoneHigh":0.00,
-    "buyZoneRationale":"One sentence explaining the ideal entry range.",
-    "signal":"BUY","signalReason":"One sentence rationale for the signal.",
-    "w52Low":0.00,"w52High":0.00
-  },
-  "secForm4": [
-    {"filingDate":"Apr 15, 2026","insiderName":"Full Name","insiderTitle":"CEO","transactionType":"Purchase","shares":10000,"pricePerShare":0.00,"totalValue":0.00,"secUrl":"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${sym}&type=4&dateb=&owner=include&count=10"}
+  "signalReason": "One sentence explaining the ${signal} signal based on the data.",
+  "buyZoneRationale": "One sentence explaining why $${idealLow.toFixed(0)}-$${idealHigh.toFixed(0)} is the ideal entry range.",
+  "thesis": "2-3 sentences: current valuation vs targets, key catalyst or risk.",
+  "yearlyForecast": [
+    {"yearEnd":"FY2025","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0},
+    {"yearEnd":"FY2026","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0},
+    {"yearEnd":"FY2027","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0},
+    {"yearEnd":"FY2028","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0}
   ]
 }
-RULES: all numbers from web search. surprisePct=((actual-estimate)/|estimate|)*100. signal must be one of: "STRONG BUY","BUY","HOLD","SELL","STRONG SELL". Return ONLY the raw JSON object.`;
+For yearlyForecast use your knowledge of analyst EPS consensus estimates for ${sym}. Return ONLY the JSON.`;
 
+  let geminiData = {};
   try {
-    const text = await callGemini(prompt, 3000);
+    const text = await callGemini(geminiPrompt, 600);
     const match = text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    return JSON.parse(match[0]);
-  } catch(_) { return null; }
+    if (match) geminiData = JSON.parse(match[0]);
+  } catch(_) {}
+
+  return {
+    chartData: {
+      sources: ['finnhub.io'],
+      dataConfidence: 'high',
+      epsQuarterly,
+      surpriseTable,
+      yearlyForecast: (geminiData.yearlyForecast || []).map(y => ({...y, revisionsUp: null, revisionsDown: null}))
+    },
+    analystConsensus: {
+      strongBuy: sb, buy: b, hold: h, sell: s, strongSell: ss,
+      totalAnalysts: total,
+      consensusRating: bullPct >= 60 ? 'Buy' : bearPct >= 40 ? 'Sell' : 'Hold',
+      priceTargetLow:  tLow,
+      priceTargetMean: tMean,
+      priceTargetHigh: tHigh,
+      upsideToMean: parseFloat(upMean.toFixed(1)),
+      upsideToHigh: parseFloat(upHigh.toFixed(1)),
+      idealBuyZoneLow:  parseFloat(idealLow.toFixed(2)),
+      idealBuyZoneHigh: parseFloat(idealHigh.toFixed(2)),
+      buyZoneRationale: geminiData.buyZoneRationale || '',
+      signal,
+      signalReason: geminiData.signalReason || '',
+      w52Low:  w52lo,
+      w52High: w52hi
+    },
+    secForm4: inTx
+  };
+}
+
+// ── DATE HELPERS ──────────────────────────────────────────────────
+function today() {
+  return new Date().toISOString().split('T')[0];
+}
+function future(days) {
+  const d = new Date(); d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+}
+function formatMktCap(mc) {
+  // Finnhub returns market cap in millions
+  if (mc >= 1000000) return `~$${(mc/1000000).toFixed(1)}T`;
+  if (mc >= 1000)    return `~$${(mc/1000).toFixed(1)}B`;
+  return `~$${mc.toFixed(0)}M`;
+}
+function formatEPSPeriod(period) {
+  // Convert "2024-04-30" or "2024 Q1" to "1Q'24" style
+  if (!period) return '';
+  const m = String(period).match(/(\d{4}).*?(\d)/);
+  if (m) return `${m[2]}Q'${m[1].slice(2)}`;
+  return period;
 }
 function renderWatchlistPills() {
   const c = document.getElementById('watchlistPills');
@@ -1286,13 +1429,14 @@ function showLoading(sym) {
 // ── RENDER DASHBOARD ──────────────────────────────────────────────
 function renderDashboard(sym, d) {
   const curr      = d.currency === 'USD' ? '$' : (d.currency || '$');
-  const price     = Number(d.price) || 0;
+  const price     = d.priceRaw || parseFloat(String(d.price).replace(/[^0-9.]/g,'')) || 0;
   const prevClose = Number(d.prevClose) || price;
   const chg       = price - prevClose;
   const chgPct    = prevClose ? (chg / prevClose) * 100 : 0;
   const chgPos    = chg >= 0;
   const chgColor  = chgPos ? 'var(--green)' : 'var(--red)';
   const chgSign   = chgPos ? '+' : '';
+  const priceStr  = d.price || `${curr}${price.toFixed(2)}`;
 
   const trailPE   = d.peRatioTrailing;
   const fwdPE     = d.peRatioForward;
@@ -1327,7 +1471,7 @@ function renderDashboard(sym, d) {
       <div class="metric-card blue">
         <div class="metric-icon">💲</div>
         <div class="metric-label">Current Price</div>
-        <div class="metric-value blue">${curr}${price.toFixed(2)}</div>
+        <div class="metric-value blue">${priceStr}</div>
         <div class="metric-sub">
           <span style="color:${chgColor};font-weight:600">${chgSign}${chgPct.toFixed(2)}%</span>
           <span style="color:${chgColor}">(${chgSign}${curr}${Math.abs(chg).toFixed(2)})</span>
