@@ -1132,11 +1132,12 @@ async function fetchPhase2(sym, phase1) {
   const price = phase1.priceRaw || 0;
 
   // Fire all Finnhub calls in parallel
-  const [eps, recs, targets, insiders] = await Promise.all([
-    fh(`/stock/earnings?symbol=${sym}&limit=4`),   // last 4 reported quarters only
+  const [eps, recs, targets, insiders, epsAnnual] = await Promise.all([
+    fh(`/stock/earnings?symbol=${sym}&limit=4`),
     fh(`/stock/recommendation?symbol=${sym}`),
     fh(`/stock/price-target?symbol=${sym}`),
-    fh(`/stock/insider-transactions?symbol=${sym}`)
+    fh(`/stock/insider-transactions?symbol=${sym}`),
+    fh(`/stock/eps-estimate?symbol=${sym}&freq=annual`)
   ]);
 
   // ── Reported quarterly EPS (last 4, oldest first) ─────────────
@@ -1275,11 +1276,7 @@ IMPORTANT: Fill in REAL analyst consensus EPS estimates for ${sym}. For yearlyFo
       dataConfidence: 'high',
       epsQuarterly,
       surpriseTable,
-      yearlyForecast: (geminiData.yearlyForecast || []).map(y => ({
-        ...y,
-        revisionsUp:   y.revisionsUp   ?? null,
-        revisionsDown: y.revisionsDown ?? null
-      }))
+      yearlyForecast: buildYearlyForecast(epsAnnual, geminiData.yearlyForecast)
     },
     analystConsensus: {
       strongBuy: sb, buy: b, hold: h, sell: s, strongSell: ss,
@@ -1300,6 +1297,35 @@ IMPORTANT: Fill in REAL analyst consensus EPS estimates for ${sym}. For yearlyFo
     },
     secForm4: inTx
   };
+}
+
+// ── BUILD YEARLY FORECAST ─────────────────────────────────────────
+// Uses Finnhub annual EPS estimates as primary, Gemini as fallback
+function buildYearlyForecast(finnhubData, geminiData) {
+  // Try Finnhub first
+  const fhRows = (finnhubData?.data || [])
+    .filter(d => d.epsAvg && d.epsAvg > 0)
+    .sort((a, b) => a.period > b.period ? 1 : -1)
+    .map(d => {
+      const date = new Date(d.period);
+      const yearEnd = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      return {
+        yearEnd,
+        consensus:     parseFloat((d.epsAvg  || 0).toFixed(2)),
+        high:          parseFloat((d.epsHigh || 0).toFixed(2)),
+        low:           parseFloat((d.epsLow  || 0).toFixed(2)),
+        numEstimates:  d.nAnalysts || 0,
+        revisionsUp:   null,
+        revisionsDown: null
+      };
+    });
+
+  if (fhRows.length > 0) return fhRows;
+
+  // Fallback: Gemini data
+  return (geminiData || [])
+    .filter(y => y.consensus && y.consensus > 0)
+    .map(y => ({ ...y, revisionsUp: y.revisionsUp ?? null, revisionsDown: y.revisionsDown ?? null }));
 }
 
 // ── DATE HELPERS ──────────────────────────────────────────────────
