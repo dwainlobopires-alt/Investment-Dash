@@ -1132,14 +1132,12 @@ async function fetchPhase2(sym, phase1) {
   const price = phase1.priceRaw || 0;
 
   // Fire all Finnhub calls in parallel
-  const [eps, recs, targets, insiders, epsEst] = await Promise.all([
-    fh(`/stock/earnings?symbol=${sym}&limit=4`),
+  const [eps, recs, targets, insiders] = await Promise.all([
+    fh(`/stock/earnings?symbol=${sym}&limit=8`),
     fh(`/stock/recommendation?symbol=${sym}`),
     fh(`/stock/price-target?symbol=${sym}`),
     fh(`/stock/insider-transactions?symbol=${sym}`),
-    fh(`/stock/eps-estimate?symbol=${sym}&freq=annual`)
   ]);
-  console.log('Finnhub eps-estimate raw:', JSON.stringify(epsEst));
 
   // ── Reported quarterly EPS (last 4, oldest first) ─────────────
   const reported = (eps || []).slice(0, 4).reverse();
@@ -1233,11 +1231,6 @@ Analyst ratings: ${sb} Strong Buy, ${b} Buy, ${h} Hold, ${s} Sell, ${ss} Strong 
 
 Return ONLY this JSON object (no markdown, no text outside the JSON):
 {
-  "yearlyForecast": [
-    {"yearEnd":"Jan 2027","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0},
-    {"yearEnd":"Jan 2028","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0},
-    {"yearEnd":"Jan 2029","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0}
-  ],
   "forwardQuarters": [
     {"period":"${fwdLabels[0]}","estimated":0.00},
     {"period":"${fwdLabels[1]}","estimated":0.00},
@@ -1271,54 +1264,16 @@ IMPORTANT: Fill in REAL analyst consensus EPS estimates for ${sym}. For yearlyFo
 
   const epsQuarterly = [...reportedBars, ...forwardBars];
 
-  // ── Yearly forecast: Finnhub primary, Gemini fallback ────────
-  let geminiYearlyForecast = [];
-
-  // Try Finnhub eps-estimate (free tier)
-  const epsRaw = epsEst?.data || (Array.isArray(epsEst) ? epsEst : []);
-  console.log('Finnhub eps-estimate:', JSON.stringify(epsRaw));
-  if (epsRaw.length > 0) {
-    geminiYearlyForecast = epsRaw
-      .filter(d => d.epsAvg && d.epsAvg > 0)
-      .sort((a, b) => a.period > b.period ? 1 : -1)
-      .map(d => {
-        const dt = new Date(d.period);
-        const yearEnd = dt.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-        return {
-          yearEnd,
-          consensus:     parseFloat((d.epsAvg  || 0).toFixed(2)),
-          high:          parseFloat((d.epsHigh || 0).toFixed(2)),
-          low:           parseFloat((d.epsLow  || 0).toFixed(2)),
-          numEstimates:  d.nAnalysts || 0,
-          revisionsUp:   null,
-          revisionsDown: null
-        };
-      });
-  }
-
-  // Fallback to Gemini if Finnhub had no data
-  if (geminiYearlyForecast.length === 0) {
-    try {
-      const fyPrompt = `List analyst consensus EPS estimates for ${sym} stock. Give the consensus (mean), high, and low EPS estimate for each of the next 3 fiscal years. Return ONLY a JSON array, no markdown:
-[{"yearEnd":"MMM YYYY","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0},{"yearEnd":"MMM YYYY","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0},{"yearEnd":"MMM YYYY","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0}]
-Use real numbers. Return ONLY the JSON array.`;
-      const fyText = await callGemini(fyPrompt, 350);
-      const fyMatch = fyText.replace(/```json|```/g, '').match(/\[[\s\S]*\]/);
-      if (fyMatch) {
-        geminiYearlyForecast = JSON.parse(fyMatch[0])
-          .filter(y => y.consensus && y.consensus > 0)
-          .map(y => ({ ...y, revisionsUp: null, revisionsDown: null }));
-      }
-    } catch(_) {}
-  }
+  // ── Yearly forecast — computed from historical EPS trend ─────
+  // No external API needed: use quarter history to project forward
+  const geminiYearlyForecast = calcYearlyForecast(eps || []);
 
   return {
     chartData: {
-      sources: ['finnhub.io + Gemini'],
+      sources: ['finnhub.io'],
       dataConfidence: 'high',
       epsQuarterly,
       surpriseTable,
-      yearlyForecast: geminiYearlyForecast
     },
     analystConsensus: {
       strongBuy: sb, buy: b, hold: h, sell: s, strongSell: ss,
@@ -1542,21 +1497,6 @@ function renderChartsHTML(sym, cd, d) {
       </td>
     </tr>`;
   }).join('');
-
-  const forecastRows = (cd.yearlyForecast || []).filter(r => r.consensus && r.consensus > 0).map(r => `<tr>
-    <td>${r.yearEnd}</td>
-    <td class="mono">${r.consensus != null ? r.consensus.toFixed(2) : '—'}</td>
-    <td class="mono">${r.high != null ? r.high.toFixed(2) : '—'}</td>
-    <td class="mono">${r.low != null ? r.low.toFixed(2) : '—'}</td>
-    <td class="mono">${r.numEstimates ?? '—'}</td>
-    <td class="mono" style="color:${r.revisionsUp > 0 ? '#166534' : 'inherit'}">
-      ${r.revisionsUp != null ? r.revisionsUp : '<span style="color:var(--txt3);font-size:11px">n/a</span>'}
-    </td>
-    <td class="mono" style="color:${r.revisionsDown > 0 ? '#991b1b' : 'inherit'}">
-      ${r.revisionsDown != null ? r.revisionsDown : '<span style="color:var(--txt3);font-size:11px">n/a</span>'}
-    </td>
-  </tr>`).join('');
-
   return `
     <!-- EPS BAR CHART -->
     <div class="chart-card">
@@ -1593,32 +1533,18 @@ function renderChartsHTML(sym, cd, d) {
       </table>
     </div>
 
-    <!-- YEARLY FORECAST TABLE -->
-    <div class="chart-card">
-      <div class="chart-card-title">Yearly Earnings Forecast</div>
-      ${disclaimerBadge}
-      <table class="data-table" style="margin-top:4px">
-        <thead>
-          <tr>
-            <th>Fiscal Year End</th>
-            <th>Consensus EPS*</th>
-            <th>High EPS*</th>
-            <th>Low EPS*</th>
-            <th># Estimates</th>
-            <th style="max-width:120px">Revisions Up ↑<br><span style="font-weight:400;font-size:10px">(last 4 wks)</span></th>
-            <th style="max-width:120px">Revisions Down ↓<br><span style="font-weight:400;font-size:10px">(last 4 wks)</span></th>
-          </tr>
-        </thead>
-        <tbody>${forecastRows || '<tr><td colspan="7" style="color:var(--txt3);padding:16px 0">No data found</td></tr>'}</tbody>
-      </table>
-      <div style="margin-top:14px;font-size:11px;color:var(--txt3);line-height:1.7">
-        * EPS figures are non-GAAP/adjusted consensus estimates where available. 
-        Revision counts may not be available via web search — verify at 
-        <a href="https://finance.yahoo.com/quote/${sym}/analysis" target="_blank" 
-        style="color:var(--accent)">Yahoo Finance ↗</a> or 
-        <a href="https://www.zacks.com/stock/quote/${sym}/detailed-estimates" target="_blank"
-        style="color:var(--accent)">Zacks ↗</a> for confirmed figures.
+    <!-- YEARLY FORECAST — LINK TO NASDAQ -->
+    <div class="chart-card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <div>
+        <div class="chart-card-title" style="margin-bottom:6px">Yearly Earnings Forecast</div>
+        <div style="font-size:13px;color:var(--txt3)">View full analyst EPS forecasts, revision counts and consensus estimates on NASDAQ.</div>
       </div>
+      <a href="https://www.nasdaq.com/market-activity/stocks/${sym.toLowerCase()}/earnings"
+        target="_blank"
+        style="display:inline-flex;align-items:center;gap:8px;padding:11px 20px;background:var(--accent);color:white;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;white-space:nowrap;transition:background .15s"
+        onmouseover="this.style.background='#1d4ed8'" onmouseout="this.style.background='var(--accent)'">
+        View ${sym} Earnings on NASDAQ ↗
+      </a>
     </div>
 
     ${renderAnalystConsensus(sym, cd, d)}
