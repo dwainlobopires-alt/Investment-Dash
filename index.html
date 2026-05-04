@@ -780,10 +780,83 @@ main {
 .form4-link   { font-size: 12px; color: var(--accent); text-decoration: none; flex-shrink: 0; }
 .form4-link:hover { text-decoration: underline; }
 .form4-empty  { padding: 20px 0; font-size: 14px; color: var(--txt3); }
+/* ── GEMINI KEY BANNER ────────────────────────────────────────── */
+.key-banner {
+  background: #f0f9ff;
+  border-bottom: 2px solid #0ea5e9;
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.key-banner.has-key {
+  background: #f0fdf4;
+  border-bottom-color: #22c55e;
+}
+.key-banner label {
+  font-weight: 600;
+  color: #0369a1;
+  white-space: nowrap;
+}
+.key-banner.has-key label { color: #166534; }
+.key-banner input {
+  flex: 1;
+  min-width: 240px;
+  max-width: 400px;
+  height: 34px;
+  padding: 0 12px;
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  border: 1px solid #bae6fd;
+  border-radius: 6px;
+  outline: none;
+  background: white;
+  color: #1e293b;
+}
+.key-banner input:focus { border-color: #0ea5e9; }
+.key-banner button {
+  height: 34px;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  background: #0ea5e9;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.key-banner button:hover { background: #0284c7; }
+.key-banner .key-status { font-weight: 600; color: #166534; font-size: 12px; }
+.key-banner .key-hint { color: #64748b; margin-left: auto; font-size: 12px; }
+.key-banner .key-hint a { color: #0ea5e9; text-decoration: none; }
+.key-banner .key-clear {
+  background: none; border: none; color: #94a3b8;
+  cursor: pointer; font-size: 12px; padding: 0 4px;
+}
+.key-banner .key-clear:hover { color: var(--red); }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 </head>
 <body>
+
+<div class="key-banner" id="keyBanner">
+  <label>🔑 Gemini API Key:</label>
+  <input type="password" id="geminiKeyInput"
+    placeholder="Paste your free Gemini API key (AIza…)"
+    spellcheck="false"
+    onkeydown="if(event.key==='Enter') saveGeminiKey()">
+  <button onclick="saveGeminiKey()">Save Key</button>
+  <span class="key-status" id="keyStatus"></span>
+  <span class="key-hint">
+    Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a>
+    — no credit card needed &nbsp;·&nbsp;
+    <button class="key-clear" onclick="clearGeminiKey()" title="Remove saved key">Remove key</button>
+  </span>
+</div>
 
 <header>
   <div class="logo">
@@ -1015,10 +1088,83 @@ async function loadTicker(sym) {
 }
 
 // ── PHASE 1: live price + company overview (fast) ─────────────────
-async function fetchPhase1(sym) {
-  const prompt = `Search the web for the current stock price, P/E ratio, and next earnings date for ticker "${sym}". Also use your knowledge for the company name, description, sector, industry, exchange, market cap, and employee count.
+// ── GEMINI KEY MANAGEMENT ─────────────────────────────────────────
+const GEMINI_KEY_STORE = 'iv_gemini_key';
 
-Return ONLY this JSON (no markdown):
+function getGeminiKey() { return localStorage.getItem(GEMINI_KEY_STORE) || ''; }
+
+function saveGeminiKey() {
+  const val = document.getElementById('geminiKeyInput').value.trim();
+  if (!val) return;
+  localStorage.setItem(GEMINI_KEY_STORE, val);
+  document.getElementById('geminiKeyInput').value = '';
+  refreshKeyBanner();
+}
+
+function clearGeminiKey() {
+  localStorage.removeItem(GEMINI_KEY_STORE);
+  refreshKeyBanner();
+}
+
+function refreshKeyBanner() {
+  const key = getGeminiKey();
+  const banner = document.getElementById('keyBanner');
+  const status = document.getElementById('keyStatus');
+  const input  = document.getElementById('geminiKeyInput');
+  if (key) {
+    banner.classList.add('has-key');
+    status.textContent = '✓ Key saved (' + key.slice(0, 8) + '…)';
+    input.placeholder = 'Key saved — paste a new one to replace';
+  } else {
+    banner.classList.remove('has-key');
+    status.textContent = '';
+    input.placeholder = 'Paste your free Gemini API key (AIza…)';
+  }
+}
+
+// ── GEMINI API HELPER ─────────────────────────────────────────────
+async function callGemini(prompt, maxTokens) {
+  const key = getGeminiKey();
+  if (!key) throw new Error('No Gemini API key set. Paste your free key in the banner above.');
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      tools: [{ google_search: {} }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: maxTokens || 1024
+      }
+    })
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = err?.error?.message || `Gemini API error ${res.status}`;
+    throw new Error(msg);
+  }
+
+  const json = await res.json();
+  // Extract all text parts from the response
+  const text = (json.candidates?.[0]?.content?.parts || [])
+    .map(p => p.text || '').join('');
+
+  if (!text) throw new Error('No response from Gemini. Try again.');
+  return text;
+}
+
+// ── PHASE 1: live price + company overview ────────────────────────
+async function fetchPhase1(sym) {
+  const prompt = `Search the web right now for current stock data for ticker "${sym}".
+
+Find: current stock price, trailing P/E ratio, forward P/E ratio, next earnings date, market cap.
+Use your knowledge for: company name, description, sector, industry, exchange, employee count.
+
+Return ONLY this JSON (absolutely no markdown, no backticks, no explanation):
 {
   "name": "Full Company Name",
   "ticker": "${sym}",
@@ -1028,7 +1174,7 @@ Return ONLY this JSON (no markdown):
   "currency": "USD",
   "price": 0.00,
   "prevClose": 0.00,
-  "description": "2-3 sentence plain-English description.",
+  "description": "2-3 sentence plain-English description of what this company does.",
   "peRatioTrailing": 0.0,
   "peRatioForward": 0.0,
   "nextEarningsDate": "Mon DD, YYYY",
@@ -1036,35 +1182,22 @@ Return ONLY this JSON (no markdown):
   "marketCap": "~$XXXb",
   "employees": "~XX,000"
 }
-RULES: price, peRatioTrailing, peRatioForward, nextEarningsDate MUST come from web search — not training data. All other fields use your knowledge. Return ONLY the JSON.`;
+CRITICAL: price, peRatioTrailing, peRatioForward, nextEarningsDate must be real current values from your web search. Return ONLY the raw JSON object — no markdown fences, no text before or after.`;
 
-  const res = await fetch('/.netlify/functions/anthropic', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 600,
-      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-      messages: [{ role: 'user', content: prompt }]
-    })
-  });
-  if (!res.ok) throw new Error(`Request failed (${res.status}).`);
-  const json = await res.json();
-  const textBlock = json.content?.filter(b => b.type === 'text').pop();
-  if (!textBlock) throw new Error('No data returned.');
-  const match = textBlock.text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('Could not parse response.');
+  const text = await callGemini(prompt, 800);
+  const match = text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('Could not parse Gemini response. Please try again.');
   return JSON.parse(match[0]);
 }
 
-// ── PHASE 2: EPS charts, analyst consensus, Form 4 (background) ───
+// ── PHASE 2: EPS, analysts, Form 4 (background) ──────────────────
 async function fetchPhase2(sym, phase1) {
   const price = phase1.price || 0;
-  const prompt = `Search the web for detailed earnings and analyst data for stock ticker "${sym}" (current price ~$${price}).
+  const prompt = `Search the web for detailed financial data for stock ticker "${sym}" (current price ~$${price}).
 
-Search for: quarterly EPS history, annual EPS forecasts FY2026-FY2029, analyst price targets and ratings breakdown, recent SEC Form 4 insider transactions.
+Find: quarterly EPS history (actual vs estimated, last 4-8 quarters), forward EPS estimates, annual EPS forecasts for FY2026-FY2029, analyst price targets and Buy/Hold/Sell ratings breakdown, recent SEC Form 4 insider transactions.
 
-Return ONLY this JSON (no markdown):
+Return ONLY this raw JSON (no markdown, no backticks, no explanation):
 {
   "chartData": {
     "sources": ["finance.yahoo.com"],
@@ -1080,7 +1213,10 @@ Return ONLY this JSON (no markdown):
       {"period": "1Q'27","estimated":0.00,"reported":null,"beat":null,"isFuture":true}
     ],
     "surpriseTable": [
-      {"quarterEnd":"Jan 2026","dateReported":"2/25/2026","actualEPS":0.00,"estimatedEPS":0.00,"surprisePct":0.00}
+      {"quarterEnd":"Jan 2026","dateReported":"2/25/2026","actualEPS":0.00,"estimatedEPS":0.00,"surprisePct":0.00},
+      {"quarterEnd":"Oct 2025","dateReported":"11/19/2025","actualEPS":0.00,"estimatedEPS":0.00,"surprisePct":0.00},
+      {"quarterEnd":"Jul 2025","dateReported":"8/27/2025","actualEPS":0.00,"estimatedEPS":0.00,"surprisePct":0.00},
+      {"quarterEnd":"Apr 2025","dateReported":"5/28/2025","actualEPS":0.00,"estimatedEPS":0.00,"surprisePct":0.00}
     ],
     "yearlyForecast": [
       {"yearEnd":"FY2026","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":null,"revisionsDown":null},
@@ -1094,33 +1230,22 @@ Return ONLY this JSON (no markdown):
     "consensusRating":"Buy","priceTargetLow":0.00,"priceTargetMean":0.00,"priceTargetHigh":0.00,
     "upsideToMean":0.0,"upsideToHigh":0.0,
     "idealBuyZoneLow":0.00,"idealBuyZoneHigh":0.00,
-    "buyZoneRationale":"One sentence on the ideal entry range.",
-    "signal":"BUY","signalReason":"One sentence rationale.",
+    "buyZoneRationale":"One sentence explaining the ideal entry range.",
+    "signal":"BUY","signalReason":"One sentence rationale for the signal.",
     "w52Low":0.00,"w52High":0.00
   },
   "secForm4": [
     {"filingDate":"Apr 15, 2026","insiderName":"Full Name","insiderTitle":"CEO","transactionType":"Purchase","shares":10000,"pricePerShare":0.00,"totalValue":0.00,"secUrl":"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${sym}&type=4&dateb=&owner=include&count=10"}
   ]
 }
-RULES: use web search data only for all numbers. signal: "STRONG BUY","BUY","HOLD","SELL","STRONG SELL". surprisePct=((actual-estimate)/|estimate|)*100. Return ONLY the JSON.`;
+RULES: all numbers from web search. surprisePct=((actual-estimate)/|estimate|)*100. signal must be one of: "STRONG BUY","BUY","HOLD","SELL","STRONG SELL". Return ONLY the raw JSON object.`;
 
-  const res = await fetch('/.netlify/functions/anthropic', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2500,
-      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-      messages: [{ role: 'user', content: prompt }]
-    })
-  });
-  if (!res.ok) return null;
-  const json = await res.json();
-  const textBlock = json.content?.filter(b => b.type === 'text').pop();
-  if (!textBlock) return null;
-  const match = textBlock.text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
-  if (!match) return null;
-  return JSON.parse(match[0]);
+  try {
+    const text = await callGemini(prompt, 3000);
+    const match = text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    return JSON.parse(match[0]);
+  } catch(_) { return null; }
 }
 function renderWatchlistPills() {
   const c = document.getElementById('watchlistPills');
@@ -1668,6 +1793,7 @@ function loadTV(sym) {
 }
 
 // ── INIT ──────────────────────────────────────────────────────────
+refreshKeyBanner();
 renderWatchlistPills();
 
 // Auto-load last viewed ticker if watchlist exists
