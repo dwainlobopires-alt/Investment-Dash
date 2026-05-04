@@ -1092,14 +1092,21 @@ async function fetchPhase1(sym) {
     ? formatMktCap(profile.marketCapitalization)
     : null;
 
-  // Gemini for description only (no search needed — it knows these companies)
-  const geminiPrompt = `Write a 2-3 sentence plain-English description of what ${profile?.name || sym} does — its main products/services and market position. Be factual and concise. Return ONLY the description text, nothing else.`;
+  // Get description from Wikipedia (free, no key, CORS-enabled)
   let description = '';
   try {
-    description = await callGemini(geminiPrompt, 200);
-    description = description.trim();
-  } catch(_) {
-    description = `${profile?.name || sym} is a publicly traded company listed on ${profile?.exchange || 'a major exchange'}.`;
+    const searchName = (profile?.name || sym).replace(/\s+(Corp\.?|Inc\.?|Ltd\.?|LLC|plc|N\.V\.|SE|AG|Holdings?|Group|Co\.?)$/i, '').trim();
+    const wikiRes = await fetch('https://en.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(searchName));
+    if (wikiRes.ok) {
+      const wikiData = await wikiRes.json();
+      if (wikiData.extract && wikiData.type !== 'disambiguation') {
+        const sentences = wikiData.extract.match(/[^.!?]+[.!?]+/g) || [];
+        description = sentences.slice(0, 2).join(' ').trim();
+      }
+    }
+  } catch(_) {}
+  if (!description) {
+    description = (profile?.name || sym) + ' is a publicly traded company listed on ' + (profile?.exchange || 'a major exchange') + ' in the ' + (profile?.finnhubIndustry || 'financial') + ' sector.';
   }
 
   return {
@@ -1379,7 +1386,7 @@ function renderDashboard(sym, d) {
           <div class="company-name">${d.name || sym}</div>
           <div class="company-meta">
             <span class="company-tag">${d.sector || ''}</span>
-            <span class="company-tag">${d.industry || ''}</span>
+            ${d.industry && d.industry !== d.sector ? `<span class="company-tag">${d.industry}</span>` : ''}
             ${d.marketCap ? `<span class="company-exchange">Market Cap ${d.marketCap}</span>` : ''}
             ${d.employees  ? `<span class="company-exchange">· ${d.employees} employees</span>` : ''}
           </div>
