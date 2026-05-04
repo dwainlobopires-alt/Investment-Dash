@@ -780,83 +780,10 @@ main {
 .form4-link   { font-size: 12px; color: var(--accent); text-decoration: none; flex-shrink: 0; }
 .form4-link:hover { text-decoration: underline; }
 .form4-empty  { padding: 20px 0; font-size: 14px; color: var(--txt3); }
-/* ── GEMINI KEY BANNER ────────────────────────────────────────── */
-.key-banner {
-  background: #f0f9ff;
-  border-bottom: 2px solid #0ea5e9;
-  padding: 10px 24px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  font-size: 13px;
-}
-.key-banner.has-key {
-  background: #f0fdf4;
-  border-bottom-color: #22c55e;
-}
-.key-banner label {
-  font-weight: 600;
-  color: #0369a1;
-  white-space: nowrap;
-}
-.key-banner.has-key label { color: #166534; }
-.key-banner input {
-  flex: 1;
-  min-width: 240px;
-  max-width: 400px;
-  height: 34px;
-  padding: 0 12px;
-  font-family: 'DM Mono', monospace;
-  font-size: 12px;
-  border: 1px solid #bae6fd;
-  border-radius: 6px;
-  outline: none;
-  background: white;
-  color: #1e293b;
-}
-.key-banner input:focus { border-color: #0ea5e9; }
-.key-banner button {
-  height: 34px;
-  padding: 0 16px;
-  font-size: 13px;
-  font-weight: 600;
-  font-family: inherit;
-  background: #0ea5e9;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.key-banner button:hover { background: #0284c7; }
-.key-banner .key-status { font-weight: 600; color: #166534; font-size: 12px; }
-.key-banner .key-hint { color: #64748b; margin-left: auto; font-size: 12px; }
-.key-banner .key-hint a { color: #0ea5e9; text-decoration: none; }
-.key-banner .key-clear {
-  background: none; border: none; color: #94a3b8;
-  cursor: pointer; font-size: 12px; padding: 0 4px;
-}
-.key-banner .key-clear:hover { color: var(--red); }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 </head>
 <body>
-
-<div class="key-banner" id="keyBanner">
-  <label>🔑 Gemini API Key:</label>
-  <input type="password" id="geminiKeyInput"
-    placeholder="Paste your free Gemini API key (AIza…)"
-    spellcheck="false"
-    onkeydown="if(event.key==='Enter') saveGeminiKey()">
-  <button onclick="saveGeminiKey()">Save Key</button>
-  <span class="key-status" id="keyStatus"></span>
-  <span class="key-hint">
-    Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a>
-    — no credit card needed &nbsp;·&nbsp;
-    <button class="key-clear" onclick="clearGeminiKey()" title="Remove saved key">Remove key</button>
-  </span>
-</div>
 
 <header>
   <div class="logo">
@@ -1088,39 +1015,12 @@ async function loadTicker(sym) {
 }
 
 // ── PHASE 1: live price + company overview (fast) ─────────────────
-// ── GEMINI KEY MANAGEMENT ─────────────────────────────────────────
-const GEMINI_KEY_STORE = 'iv_gemini_key';
-
-function getGeminiKey() { return localStorage.getItem(GEMINI_KEY_STORE) || ''; }
-
-function saveGeminiKey() {
-  const val = document.getElementById('geminiKeyInput').value.trim();
-  if (!val) return;
-  localStorage.setItem(GEMINI_KEY_STORE, val);
-  document.getElementById('geminiKeyInput').value = '';
-  refreshKeyBanner();
-}
-
-function clearGeminiKey() {
-  localStorage.removeItem(GEMINI_KEY_STORE);
-  refreshKeyBanner();
-}
-
-function refreshKeyBanner() {
-  const key = getGeminiKey();
-  const banner = document.getElementById('keyBanner');
-  const status = document.getElementById('keyStatus');
-  const input  = document.getElementById('geminiKeyInput');
-  if (key) {
-    banner.classList.add('has-key');
-    status.textContent = '✓ Key saved (' + key.slice(0, 8) + '…)';
-    input.placeholder = 'Key saved — paste a new one to replace';
-  } else {
-    banner.classList.remove('has-key');
-    status.textContent = '';
-    input.placeholder = 'Paste your free Gemini API key (AIza…)';
-  }
-}
+// ── GEMINI KEY (hardcoded) ────────────────────────────────────────
+const HARDCODED_GEMINI_KEY = 'AIzaSyAdIOYRqs2b1i04IO8hk4i7jrYhFLI54cI';
+function getGeminiKey() { return HARDCODED_GEMINI_KEY; }
+function saveGeminiKey() {}
+function clearGeminiKey() {}
+function refreshKeyBanner() {}
 
 // ── GEMINI HELPER (no search tool — uses free tier) ───────────────
 async function callGemini(prompt, maxTokens) {
