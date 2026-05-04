@@ -1220,32 +1220,25 @@ async function fetchPhase2(sym, phase1) {
   }
 
   const fwdLabels = nextQuarters.length >= 4 ? nextQuarters : ["2Q'26","3Q'26","4Q'26","1Q'27"];
-  const geminiPrompt = `You are a financial analyst providing data for ${sym}.
 
-Last 4 reported quarters (for context): ${reportedBars.map(b => b.period + ': actual $' + b.reported + ', est $' + b.estimated).join(', ')}.
-Current price: ${fmt(price)}, Analyst mean PT: ${fmt(tMean)} (${fmtP(upMean)} upside), High PT: ${fmt(tHigh)}.
-Analyst ratings: ${sb} Strong Buy, ${b} Buy, ${h} Hold, ${s} Sell, ${ss} Strong Sell. Signal: ${signal}.
-
-Return ONLY this JSON object (no markdown, no text outside the JSON):
-{
-  "forwardQuarters": [
-    {"period":"${fwdLabels[0]}","estimated":0.00},
-    {"period":"${fwdLabels[1]}","estimated":0.00},
-    {"period":"${fwdLabels[2]}","estimated":0.00},
-    {"period":"${fwdLabels[3]}","estimated":0.00}
-  ],
-  "yearlyForecast": [
-    {"yearEnd":"Jan 2026","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0},
-    {"yearEnd":"Jan 2027","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0},
-    {"yearEnd":"Jan 2028","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0},
-    {"yearEnd":"Jan 2029","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0}
-  ],
-  "signalReason": "One sentence rationale for the ${signal} signal.",
-  "buyZoneRationale": "One sentence on why ${fmt(idealLow)}-${fmt(idealHigh)} is the ideal entry range.",
-  "thesis": "2 sentences on valuation vs targets and key catalyst or risk."
-}
-
-IMPORTANT: Use real analyst consensus EPS estimates for ${sym} for BOTH forwardQuarters and yearlyForecast. For yearlyForecast use ${sym}'s actual fiscal year end month and years 2026-2029. Fill in real numbers — do not leave zeros. Return ONLY the JSON.`;
+  // Build prompt with string concatenation — avoids nested template literal issues
+  const geminiPrompt = 'You are a financial analyst providing data for ' + sym + '.\n\n'
+    + 'Last 4 reported quarters: ' + reportedBars.map(b => b.period + ': actual $' + b.reported + ', est $' + b.estimated).join(', ') + '.\n'
+    + 'Current price: ' + fmt(price) + ', Analyst mean PT: ' + fmt(tMean) + ' (' + fmtP(upMean) + ' upside), High PT: ' + fmt(tHigh) + '.\n'
+    + 'Analyst ratings: ' + sb + ' Strong Buy, ' + b + ' Buy, ' + h + ' Hold, ' + s + ' Sell, ' + ss + ' Strong Sell. Signal: ' + signal + '.\n\n'
+    + 'Return ONLY this JSON object (no markdown):\n'
+    + '{\n'
+    + '  "forwardQuarters": [\n'
+    + '    {"period":"' + fwdLabels[0] + '","estimated":0.00},\n'
+    + '    {"period":"' + fwdLabels[1] + '","estimated":0.00},\n'
+    + '    {"period":"' + fwdLabels[2] + '","estimated":0.00},\n'
+    + '    {"period":"' + fwdLabels[3] + '","estimated":0.00}\n'
+    + '  ],\n'
+    + '  "signalReason": "One sentence rationale for the ' + signal + ' signal.",\n'
+    + '  "buyZoneRationale": "One sentence on why ' + fmt(idealLow) + '-' + fmt(idealHigh) + ' is the ideal entry range.",\n'
+    + '  "thesis": "2 sentences on valuation vs targets and key catalyst or risk."\n'
+    + '}\n'
+    + 'Fill in estimated values with real analyst consensus numbers. Return ONLY the JSON.';
 
   let geminiData = {};
   try {
