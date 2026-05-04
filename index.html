@@ -1551,32 +1551,17 @@ function renderChartsHTML(sym, cd, d) {
       </table>
     </div>
 
-    <!-- YEARLY FORECAST TABLE -->
-    <div class="chart-card">
-      <div class="chart-card-title">Yearly Earnings Forecast</div>
-      ${disclaimerBadge}
-      <table class="data-table" style="margin-top:4px">
-        <thead>
-          <tr>
-            <th>Fiscal Year End</th>
-            <th>Consensus EPS*</th>
-            <th>High EPS*</th>
-            <th>Low EPS*</th>
-            <th># Estimates</th>
-            <th style="max-width:120px">Revisions Up ↑<br><span style="font-weight:400;font-size:10px">(last 4 wks)</span></th>
-            <th style="max-width:120px">Revisions Down ↓<br><span style="font-weight:400;font-size:10px">(last 4 wks)</span></th>
-          </tr>
-        </thead>
-        <tbody>${forecastRows || '<tr><td colspan="7" style="color:var(--txt3);padding:16px 0">No data found</td></tr>'}</tbody>
-      </table>
-      <div style="margin-top:14px;font-size:11px;color:var(--txt3);line-height:1.7">
-        * EPS figures are non-GAAP/adjusted consensus estimates where available. 
-        Revision counts may not be available via web search — verify at 
-        <a href="https://finance.yahoo.com/quote/${sym}/analysis" target="_blank" 
-        style="color:var(--accent)">Yahoo Finance ↗</a> or 
-        <a href="https://www.zacks.com/stock/quote/${sym}/detailed-estimates" target="_blank"
-        style="color:var(--accent)">Zacks ↗</a> for confirmed figures.
+    <!-- YEARLY FORECAST — NASDAQ LINK -->
+    <div class="chart-card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
+      <div>
+        <div class="chart-card-title" style="margin-bottom:6px">Yearly Earnings Forecast</div>
+        <div style="font-size:13px;color:var(--txt3)">View full analyst EPS forecasts, revision counts and consensus estimates on NASDAQ.</div>
       </div>
+      <a href="https://www.nasdaq.com/market-activity/stocks/${sym.toLowerCase()}/earnings"
+        target="_blank"
+        style="display:inline-flex;align-items:center;gap:8px;padding:12px 22px;background:var(--accent);color:white;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;white-space:nowrap;flex-shrink:0">
+        View ${sym} Earnings on NASDAQ ↗
+      </a>
     </div>
 
     ${renderAnalystConsensus(sym, cd, d)}
