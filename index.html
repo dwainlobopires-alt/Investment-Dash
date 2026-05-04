@@ -1222,19 +1222,20 @@ async function fetchPhase2(sym, phase1) {
     }
   }
 
+  const fwdLabels = nextQuarters.length >= 4 ? nextQuarters : ['2Q\'26','3Q\'26','4Q\'26','1Q\'27'];
   const geminiPrompt = `You are a financial analyst providing data for ${sym}.
 
-Last 4 reported quarters (for context): ${reportedBars.map(b => `${b.period}: actual $${b.reported}, est $${b.estimated}`).join(', ')}.
+Last 4 reported quarters (for context): ${reportedBars.map(b => b.period + ': actual $' + b.reported + ', est $' + b.estimated).join(', ')}.
 Current price: ${fmt(price)}, Analyst mean PT: ${fmt(tMean)} (${fmtP(upMean)} upside), High PT: ${fmt(tHigh)}.
 Analyst ratings: ${sb} Strong Buy, ${b} Buy, ${h} Hold, ${s} Sell, ${ss} Strong Sell. Signal: ${signal}.
 
 Return ONLY this JSON object (no markdown, no text outside the JSON):
 {
   "forwardQuarters": [
-    {"period":"${nextQuarters[0]||'2Q\\'26'}","estimated":0.00},
-    {"period":"${nextQuarters[1]||'3Q\\'26'}","estimated":0.00},
-    {"period":"${nextQuarters[2]||'4Q\\'26'}","estimated":0.00},
-    {"period":"${nextQuarters[3]||'1Q\\'27'}","estimated":0.00}
+    {"period":"${fwdLabels[0]}","estimated":0.00},
+    {"period":"${fwdLabels[1]}","estimated":0.00},
+    {"period":"${fwdLabels[2]}","estimated":0.00},
+    {"period":"${fwdLabels[3]}","estimated":0.00}
   ],
   "yearlyForecast": [
     {"yearEnd":"Jan 2026","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0},
