@@ -1132,12 +1132,11 @@ async function fetchPhase2(sym, phase1) {
   const price = phase1.priceRaw || 0;
 
   // Fire all Finnhub calls in parallel
-  const [eps, recs, targets, insiders, epsAnnual] = await Promise.all([
+  const [eps, recs, targets, insiders] = await Promise.all([
     fh(`/stock/earnings?symbol=${sym}&limit=4`),
     fh(`/stock/recommendation?symbol=${sym}`),
     fh(`/stock/price-target?symbol=${sym}`),
-    fh(`/stock/insider-transactions?symbol=${sym}`),
-    fh(`/stock/eps-estimate?symbol=${sym}&freq=annual`)
+    fh(`/stock/insider-transactions?symbol=${sym}`)
   ]);
 
   // ── Reported quarterly EPS (last 4, oldest first) ─────────────
@@ -1270,13 +1269,36 @@ IMPORTANT: Fill in REAL analyst consensus EPS estimates for ${sym}. For yearlyFo
 
   const epsQuarterly = [...reportedBars, ...forwardBars];
 
+  // ── Dedicated yearly forecast call — simple focused prompt ───
+  let geminiYearlyForecast = [];
+  try {
+    const fyPrompt = `What are Wall Street analyst consensus EPS (earnings per share) estimates for ${sym} stock for the next 3 fiscal years?
+
+Return ONLY a JSON array — no markdown, no explanation, nothing else:
+[
+  {"yearEnd":"MMM YYYY","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0},
+  {"yearEnd":"MMM YYYY","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0},
+  {"yearEnd":"MMM YYYY","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0}
+]
+Use the company's actual fiscal year end month (e.g. "Jan 2027" for NVDA, "Sep 2027" for AAPL). Fill in REAL analyst consensus numbers. Return ONLY the JSON array.`;
+
+    const fyText = await callGemini(fyPrompt, 400);
+    const fyMatch = fyText.replace(/```json|```/g, '').match(/\[[\s\S]*\]/);
+    if (fyMatch) {
+      const parsed = JSON.parse(fyMatch[0]);
+      geminiYearlyForecast = parsed
+        .filter(y => y.consensus && y.consensus > 0)
+        .map(y => ({ ...y, revisionsUp: null, revisionsDown: null }));
+    }
+  } catch(_) {}
+
   return {
     chartData: {
       sources: ['finnhub.io + Gemini'],
       dataConfidence: 'high',
       epsQuarterly,
       surpriseTable,
-      yearlyForecast: buildYearlyForecast(epsAnnual, geminiData.yearlyForecast)
+      yearlyForecast: geminiYearlyForecast
     },
     analystConsensus: {
       strongBuy: sb, buy: b, hold: h, sell: s, strongSell: ss,
@@ -1297,35 +1319,6 @@ IMPORTANT: Fill in REAL analyst consensus EPS estimates for ${sym}. For yearlyFo
     },
     secForm4: inTx
   };
-}
-
-// ── BUILD YEARLY FORECAST ─────────────────────────────────────────
-// Uses Finnhub annual EPS estimates as primary, Gemini as fallback
-function buildYearlyForecast(finnhubData, geminiData) {
-  // Try Finnhub first
-  const fhRows = (finnhubData?.data || [])
-    .filter(d => d.epsAvg && d.epsAvg > 0)
-    .sort((a, b) => a.period > b.period ? 1 : -1)
-    .map(d => {
-      const date = new Date(d.period);
-      const yearEnd = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      return {
-        yearEnd,
-        consensus:     parseFloat((d.epsAvg  || 0).toFixed(2)),
-        high:          parseFloat((d.epsHigh || 0).toFixed(2)),
-        low:           parseFloat((d.epsLow  || 0).toFixed(2)),
-        numEstimates:  d.nAnalysts || 0,
-        revisionsUp:   null,
-        revisionsDown: null
-      };
-    });
-
-  if (fhRows.length > 0) return fhRows;
-
-  // Fallback: Gemini data
-  return (geminiData || [])
-    .filter(y => y.consensus && y.consensus > 0)
-    .map(y => ({ ...y, revisionsUp: y.revisionsUp ?? null, revisionsDown: y.revisionsDown ?? null }));
 }
 
 // ── DATE HELPERS ──────────────────────────────────────────────────
