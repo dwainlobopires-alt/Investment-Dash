@@ -1242,7 +1242,7 @@ Return ONLY this JSON object (no markdown, no text outside the JSON):
   "thesis": "2 sentences on valuation vs targets and key catalyst or risk."
 }
 
-IMPORTANT: Fill in REAL analyst consensus EPS estimates for ${sym}. For yearlyForecast use the company's actual fiscal year end month and years 2027, 2028, 2029. Use real numbers from your knowledge — do NOT leave zeros. Return ONLY the JSON.`;
+IMPORTANT: Use real analyst consensus EPS estimates for ${sym} for forwardQuarters. Return ONLY the JSON.`;
 
   let geminiData = {};
   try {
@@ -1263,10 +1263,6 @@ IMPORTANT: Fill in REAL analyst consensus EPS estimates for ${sym}. For yearlyFo
   }));
 
   const epsQuarterly = [...reportedBars, ...forwardBars];
-
-  // ── Yearly forecast — computed from historical EPS trend ─────
-  // No external API needed: use quarter history to project forward
-  const geminiYearlyForecast = calcYearlyForecast(eps || []);
 
   return {
     chartData: {
