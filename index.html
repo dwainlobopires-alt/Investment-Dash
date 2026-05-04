@@ -1231,28 +1231,27 @@ Analyst ratings: ${sb} Strong Buy, ${b} Buy, ${h} Hold, ${s} Sell, ${ss} Strong 
 
 Return ONLY this JSON object (no markdown, no text outside the JSON):
 {
+  "yearlyForecast": [
+    {"yearEnd":"Jan 2027","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0},
+    {"yearEnd":"Jan 2028","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0},
+    {"yearEnd":"Jan 2029","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0}
+  ],
   "forwardQuarters": [
     {"period":"${fwdLabels[0]}","estimated":0.00},
     {"period":"${fwdLabels[1]}","estimated":0.00},
     {"period":"${fwdLabels[2]}","estimated":0.00},
     {"period":"${fwdLabels[3]}","estimated":0.00}
   ],
-  "yearlyForecast": [
-    {"yearEnd":"Jan 2026","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0},
-    {"yearEnd":"Jan 2027","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0},
-    {"yearEnd":"Jan 2028","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0},
-    {"yearEnd":"Jan 2029","consensus":0.00,"high":0.00,"low":0.00,"numEstimates":0,"revisionsUp":0,"revisionsDown":0}
-  ],
   "signalReason": "One sentence rationale for the ${signal} signal.",
   "buyZoneRationale": "One sentence on why ${fmt(idealLow)}-${fmt(idealHigh)} is the ideal entry range.",
   "thesis": "2 sentences on valuation vs targets and key catalyst or risk."
 }
 
-IMPORTANT: Use real analyst consensus EPS estimates for ${sym} for BOTH forwardQuarters and yearlyForecast. For yearlyForecast use ${sym}'s actual fiscal year end month and years 2026-2029. Fill in real numbers — do not leave zeros. Return ONLY the JSON.`;
+IMPORTANT: Fill in REAL analyst consensus EPS estimates for ${sym}. For yearlyForecast use the company's actual fiscal year end month and years 2027, 2028, 2029. Use real numbers from your knowledge — do NOT leave zeros. Return ONLY the JSON.`;
 
   let geminiData = {};
   try {
-    const text = await callGemini(geminiPrompt, 900);
+    const text = await callGemini(geminiPrompt, 1200);
     const match = text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
     if (match) geminiData = JSON.parse(match[0]);
   } catch(_) {}
@@ -1505,7 +1504,7 @@ function renderChartsHTML(sym, cd, d) {
     </tr>`;
   }).join('');
 
-  const forecastRows = (cd.yearlyForecast || []).map(r => `<tr>
+  const forecastRows = (cd.yearlyForecast || []).filter(r => r.consensus && r.consensus > 0).map(r => `<tr>
     <td>${r.yearEnd}</td>
     <td class="mono">${r.consensus != null ? r.consensus.toFixed(2) : '—'}</td>
     <td class="mono">${r.high != null ? r.high.toFixed(2) : '—'}</td>
