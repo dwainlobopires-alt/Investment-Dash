@@ -1384,33 +1384,35 @@ async function fetchPhase2(sym, phase1) {
   } catch(_) {}
 
   // ── Combine reported + forward into 8-bar EPS chart ──────────
-  const forwardBars = (geminiData.forwardQuarters || []).map(fq => ({
-    period:    fq.period,
-    estimated: fq.estimated ?? null,
-    reported:  null,
-    beat:      null,
-    isFuture:  true
-  }));
+  // Always start with 4 future bar slots based on nextQuarters
+  const geminiForward = geminiData.forwardQuarters || [];
+  const forwardBars = nextQuarters.map((period, i) => {
+    const match = geminiForward.find(fq => fq.period === period);
+    return {
+      period,
+      estimated: (match && match.estimated > 0) ? match.estimated : null,
+      reported:  null,
+      beat:      null,
+      isFuture:  true
+    };
+  });
 
-  // If Gemini gave no forward estimates, project from historical trend
+  // If no forward estimates from Gemini, project from historical growth
   const hasForwardData = forwardBars.some(b => b.estimated && b.estimated > 0);
   if (!hasForwardData && reported.length >= 2) {
-    // Calculate average YoY quarterly growth from last 4 quarters
     const actuals = reported.map(q => q.actual).filter(v => v != null && v > 0);
-    let growthRate = 0.08; // default 8% if not enough data
+    let growthRate = 0.08;
     if (actuals.length >= 2) {
       const rates = [];
       for (let i = 1; i < actuals.length; i++) {
         if (actuals[i-1] > 0) rates.push((actuals[i] - actuals[i-1]) / actuals[i-1]);
       }
       if (rates.length) growthRate = rates.reduce((a, b) => a + b, 0) / rates.length;
-      growthRate = Math.max(-0.2, Math.min(0.5, growthRate)); // cap between -20% and +50%
+      growthRate = Math.max(-0.2, Math.min(0.5, growthRate));
     }
     const lastActual = actuals[actuals.length - 1] || 0;
-    nextQuarters.forEach((period, i) => {
-      if (forwardBars[i]) {
-        forwardBars[i].estimated = parseFloat((lastActual * Math.pow(1 + growthRate, i + 1)).toFixed(2));
-      }
+    forwardBars.forEach((bar, i) => {
+      bar.estimated = parseFloat((lastActual * Math.pow(1 + growthRate, i + 1)).toFixed(2));
     });
   }
 
@@ -1767,9 +1769,9 @@ function drawEpsChart(sym, cd) {
       labels,
       datasets: [
         {
-          label: 'Reported',
-          data: repData,
-          backgroundColor: repColors,
+          label: 'Estimated',
+          data: estData,
+          backgroundColor: estColors,
           borderRadius: 2,
           borderSkipped: false,
           categoryPercentage: 0.65,
@@ -1777,9 +1779,9 @@ function drawEpsChart(sym, cd) {
           order: 1
         },
         {
-          label: 'Estimated',
-          data: estData,
-          backgroundColor: estColors,
+          label: 'Reported',
+          data: repData,
+          backgroundColor: repColors,
           borderRadius: 2,
           borderSkipped: false,
           categoryPercentage: 0.65,
