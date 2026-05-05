@@ -780,99 +780,10 @@ main {
 .form4-link   { font-size: 12px; color: var(--accent); text-decoration: none; flex-shrink: 0; }
 .form4-link:hover { text-decoration: underline; }
 .form4-empty  { padding: 20px 0; font-size: 14px; color: var(--txt3); }
-/* ── NASDAQ PANEL ─────────────────────────────────────────────── */
-.nasdaq-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.35);
-  z-index: 500;
-  animation: fadeIn .2s ease;
-}
-.nasdaq-panel {
-  display: none;
-  position: fixed;
-  top: 0; right: 0; bottom: 0;
-  width: min(820px, 100vw);
-  background: var(--surface);
-  box-shadow: -8px 0 40px rgba(0,0,0,.15);
-  z-index: 600;
-  flex-direction: column;
-  animation: slideIn .25s ease;
-}
-.nasdaq-panel.open, .nasdaq-overlay.open {
-  display: flex;
-}
-@keyframes slideIn {
-  from { transform: translateX(100%); }
-  to   { transform: translateX(0); }
-}
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-.nasdaq-panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  flex-shrink: 0;
-}
-.nasdaq-panel-body {
-  flex: 1;
-  overflow: hidden;
-  position: relative;
-}
-.nasdaq-fallback {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 40px;
-  background: var(--surface);
-}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 </head>
 <body>
-
-<div id="nasdaqPanel" class="nasdaq-panel">
-  <div class="nasdaq-panel-header">
-    <div id="nasdaqPanelTitle" style="font-weight:600;font-size:15px;color:var(--txt)">NASDAQ Earnings</div>
-    <div style="display:flex;gap:10px;align-items:center">
-      <a id="nasdaqOpenLink" href="#" target="_blank"
-        style="font-size:13px;color:var(--accent);text-decoration:none;font-weight:500">
-        Open in new tab ↗
-      </a>
-      <button onclick="closeNasdaqPanel()"
-        style="background:none;border:none;cursor:pointer;font-size:22px;color:var(--txt3);line-height:1;padding:0 4px">
-        ×
-      </button>
-    </div>
-  </div>
-  <div class="nasdaq-panel-body">
-    <iframe id="nasdaqFrame" src="" frameborder="0"
-      style="width:100%;height:100%;border:none"
-      onload="onFrameLoad(this)"
-      onerror="onFrameError()">
-    </iframe>
-    <div id="nasdaqFallback" class="nasdaq-fallback" style="display:none">
-      <div style="font-size:40px;margin-bottom:16px">🚫</div>
-      <div style="font-size:16px;font-weight:600;color:var(--txt);margin-bottom:8px">NASDAQ blocks embedded pages</div>
-      <div style="font-size:14px;color:var(--txt2);margin-bottom:24px;line-height:1.7">Most financial sites prevent embedding for security reasons.<br>You can still view the full earnings data by opening it directly.</div>
-      <a id="nasdaqFallbackLink" href="#" target="_blank"
-        style="display:inline-flex;align-items:center;gap:8px;padding:12px 24px;background:var(--accent);color:white;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600">
-        Open NASDAQ Earnings ↗
-      </a>
-    </div>
-  </div>
-</div>
-<div id="nasdaqOverlay" class="nasdaq-overlay" onclick="closeNasdaqPanel()"></div>
 
 <header>
   <div class="logo">
@@ -1776,10 +1687,11 @@ function renderChartsHTML(sym, cd, d) {
         <div class="chart-card-title" style="margin-bottom:6px">Yearly Earnings Forecast</div>
         <div style="font-size:13px;color:var(--txt3)">View full analyst EPS forecasts, revision counts and consensus estimates on NASDAQ.</div>
       </div>
-      <button onclick="openNasdaqPanel('${sym.toLowerCase()}')"
-        style="display:inline-flex;align-items:center;gap:8px;padding:12px 22px;background:var(--accent);color:white;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:600;font-family:inherit;white-space:nowrap;flex-shrink:0">
+      <a href="https://www.nasdaq.com/market-activity/stocks/${sym.toLowerCase()}/earnings"
+        target="_blank"
+        style="display:inline-flex;align-items:center;gap:8px;padding:12px 22px;background:var(--accent);color:white;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;white-space:nowrap;flex-shrink:0">
         View ${sym} Earnings on NASDAQ ↗
-      </button>
+      </a>
     </div>
 
         ${renderAnalystConsensus(sym, cd, d)}
@@ -2089,52 +2001,6 @@ if (watchlist.length > 0) {
   loadTicker(last);
 }
 
-// ── NASDAQ PANEL ──────────────────────────────────────────────────
-function openNasdaqPanel(sym) {
-  const url = 'https://www.nasdaq.com/market-activity/stocks/' + sym + '/earnings';
-  document.getElementById('nasdaqPanelTitle').textContent = sym.toUpperCase() + ' Earnings — NASDAQ';
-  document.getElementById('nasdaqOpenLink').href = url;
-  document.getElementById('nasdaqFallbackLink').href = url;
-  document.getElementById('nasdaqFallback').style.display = 'none';
-  const frame = document.getElementById('nasdaqFrame');
-  frame.style.display = 'block';
-  frame.src = url;
-  document.getElementById('nasdaqPanel').classList.add('open');
-  document.getElementById('nasdaqOverlay').classList.add('open');
-  document.body.style.overflow = 'hidden';
-  clearTimeout(window._nasdaqTimer);
-  window._nasdaqTimer = setTimeout(function() {
-    try {
-      var doc = frame.contentDocument || frame.contentWindow.document;
-      if (!doc || !doc.body || doc.body.innerHTML === '') showNasdaqFallback();
-    } catch(e) { showNasdaqFallback(); }
-  }, 4000);
-}
-function showNasdaqFallback() {
-  document.getElementById('nasdaqFrame').style.display = 'none';
-  document.getElementById('nasdaqFallback').style.display = 'flex';
-}
-function onFrameLoad(frame) {
-  clearTimeout(window._nasdaqTimer);
-  try {
-    var doc = frame.contentDocument || frame.contentWindow.document;
-    if (!doc || !doc.body || doc.body.innerHTML === '') showNasdaqFallback();
-  } catch(e) { showNasdaqFallback(); }
-}
-function onFrameError() {
-  clearTimeout(window._nasdaqTimer);
-  showNasdaqFallback();
-}
-function closeNasdaqPanel() {
-  document.getElementById('nasdaqPanel').classList.remove('open');
-  document.getElementById('nasdaqOverlay').classList.remove('open');
-  document.getElementById('nasdaqFrame').src = '';
-  document.getElementById('nasdaqFrame').style.display = 'block';
-  document.getElementById('nasdaqFallback').style.display = 'none';
-  document.body.style.overflow = '';
-  clearTimeout(window._nasdaqTimer);
-}
-document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeNasdaqPanel(); });
 </script>
 </body>
 </html>
