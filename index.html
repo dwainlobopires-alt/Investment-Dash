@@ -1384,15 +1384,35 @@ async function fetchPhase2(sym, phase1) {
   } catch(_) {}
 
   // ── Combine reported + forward into 8-bar EPS chart ──────────
-  const forwardBars = (geminiData.forwardQuarters || nextQuarters.map((p, i) => ({
-    period: p, estimated: null
-  }))).map(fq => ({
+  const forwardBars = (geminiData.forwardQuarters || []).map(fq => ({
     period:    fq.period,
     estimated: fq.estimated ?? null,
     reported:  null,
     beat:      null,
     isFuture:  true
   }));
+
+  // If Gemini gave no forward estimates, project from historical trend
+  const hasForwardData = forwardBars.some(b => b.estimated && b.estimated > 0);
+  if (!hasForwardData && reported.length >= 2) {
+    // Calculate average YoY quarterly growth from last 4 quarters
+    const actuals = reported.map(q => q.actual).filter(v => v != null && v > 0);
+    let growthRate = 0.08; // default 8% if not enough data
+    if (actuals.length >= 2) {
+      const rates = [];
+      for (let i = 1; i < actuals.length; i++) {
+        if (actuals[i-1] > 0) rates.push((actuals[i] - actuals[i-1]) / actuals[i-1]);
+      }
+      if (rates.length) growthRate = rates.reduce((a, b) => a + b, 0) / rates.length;
+      growthRate = Math.max(-0.2, Math.min(0.5, growthRate)); // cap between -20% and +50%
+    }
+    const lastActual = actuals[actuals.length - 1] || 0;
+    nextQuarters.forEach((period, i) => {
+      if (forwardBars[i]) {
+        forwardBars[i].estimated = parseFloat((lastActual * Math.pow(1 + growthRate, i + 1)).toFixed(2));
+      }
+    });
+  }
 
   const epsQuarterly = [...reportedBars, ...forwardBars];
 
@@ -1711,12 +1731,13 @@ function drawEpsChart(sym, cd) {
   const estData  = quarters.map(q => q.estimated ?? null);
   const repData  = quarters.map(q => q.isFuture ? null : (q.reported ?? null));
 
-  // Per-bar colors: reported bars are light teal; future est bars still dark teal
-  const estColors = quarters.map(q =>
-    q.isFuture ? 'rgba(26,95,122,0.18)' : '#1a5f7a'
-  );
+  // Reported bars: light teal for BEAT, red for MISS
   const repColors = quarters.map(q =>
-    q.beat === true ? '#57bcd9' : q.beat === false ? '#e57373' : '#57bcd9'
+    q.beat === false ? '#e57373' : '#57bcd9'
+  );
+  // Estimated bars: dark teal for reported quarters, medium teal for future
+  const estColors = quarters.map(q =>
+    q.isFuture ? '#2a7fa0' : '#1a5f7a'
   );
 
   // Custom plugin: draw BEAT/MISS labels below x-axis
@@ -1746,16 +1767,6 @@ function drawEpsChart(sym, cd) {
       labels,
       datasets: [
         {
-          label: 'Estimated',
-          data: estData,
-          backgroundColor: estColors,
-          borderRadius: 2,
-          borderSkipped: false,
-          categoryPercentage: 0.65,
-          barPercentage: 0.55,
-          order: 2
-        },
-        {
           label: 'Reported',
           data: repData,
           backgroundColor: repColors,
@@ -1764,6 +1775,16 @@ function drawEpsChart(sym, cd) {
           categoryPercentage: 0.65,
           barPercentage: 0.55,
           order: 1
+        },
+        {
+          label: 'Estimated',
+          data: estData,
+          backgroundColor: estColors,
+          borderRadius: 2,
+          borderSkipped: false,
+          categoryPercentage: 0.65,
+          barPercentage: 0.55,
+          order: 2
         }
       ]
     },
