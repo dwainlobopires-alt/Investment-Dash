@@ -1305,7 +1305,7 @@ async function fetchPhase2(sym, phase1) {
     period:    fmtPeriod(q),
     estimated: q.estimate ?? null,
     reported:  q.actual   ?? null,
-    beat:      q.actual != null && q.estimate != null ? q.actual >= q.estimate : null,
+    beat:      q.surprisePercent != null ? q.surprisePercent >= 0 : (q.actual != null && q.estimate != null ? q.actual >= q.estimate : null),
     isFuture:  false
   }));
 
@@ -1718,6 +1718,9 @@ function renderChartsHTML(sym, cd, d) {
         <div class="legend-item">
           <div class="legend-dot" style="background:#57bcd9"></div>Reported
         </div>
+        <span style="margin-left:auto;font-size:11px;color:var(--txt3);background:#fef3c7;border-radius:4px;padding:2px 8px;border:1px solid #fcd34d">
+          ⚠ GAAP EPS — may differ from NASDAQ/Zacks adjusted (non-GAAP) figures
+        </span>
       </div>
       <div class="chart-canvas-wrap">
         <canvas id="eps-chart-${sym}"></canvas>
