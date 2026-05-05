@@ -1007,9 +1007,6 @@ main {
   <button class="nav-tab" id="tabScreener" onclick="switchTab('screener')">🔍 EPS Growth Screener</button>
 </div>
 
-<main id="mainContent">
-
-<!-- SCREENER PANEL (hidden by default) -->
 <div id="screenerPanel" style="display:none">
   <div class="screener-wrap">
     <div class="screener-header">
@@ -1061,6 +1058,8 @@ main {
     <div id="screenerResults" class="screener-results-wrap"></div>
   </div>
 </div>
+
+<main id="mainContent">
   <div class="empty-state">
     <div class="empty-icon">📈</div>
     <div class="empty-title">Search any stock ticker</div>
@@ -2366,7 +2365,7 @@ loadFearGreed();
 function switchTab(tab) {
   const isDash = tab === 'dashboard';
   document.getElementById('mainContent').style.display = isDash ? '' : 'none';
-  document.getElementById('screenerPanel').style.display = isDash ? 'none' : '';
+  document.getElementById('screenerPanel').style.display = isDash ? 'none' : 'block';
   document.getElementById('tabDashboard').classList.toggle('active', isDash);
   document.getElementById('tabScreener').classList.toggle('active', !isDash);
 }
