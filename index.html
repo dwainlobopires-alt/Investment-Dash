@@ -780,6 +780,29 @@ main {
 .form4-link   { font-size: 12px; color: var(--accent); text-decoration: none; flex-shrink: 0; }
 .form4-link:hover { text-decoration: underline; }
 .form4-empty  { padding: 20px 0; font-size: 14px; color: var(--txt3); }
+/* ── FEAR & GREED WIDGET ──────────────────────────────────────── */
+.fng-widget {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 12px 6px 8px;
+  cursor: default;
+  flex-shrink: 0;
+}
+.fng-gauge-wrap { width: 52px; flex-shrink: 0; }
+.fng-gauge { width: 100%; display: block; }
+.fng-info { display: flex; flex-direction: column; gap: 1px; }
+.fng-label { font-size: 9px; color: var(--txt3); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+.fng-score { font-family: 'DM Mono', monospace; font-size: 18px; font-weight: 600; color: var(--txt); line-height: 1; }
+.fng-rating { font-size: 10px; font-weight: 700; letter-spacing: .02em; }
+.fng-rating.extreme-fear { color: #991b1b; }
+.fng-rating.fear         { color: #d97706; }
+.fng-rating.neutral      { color: #5c5751; }
+.fng-rating.greed        { color: #16a34a; }
+.fng-rating.extreme-greed{ color: #15803d; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 </head>
@@ -807,6 +830,21 @@ main {
   </div>
 
   <div class="header-right">
+    <div id="fngWidget" class="fng-widget" title="CNN Fear & Greed Index">
+      <div class="fng-gauge-wrap">
+        <svg class="fng-gauge" viewBox="0 0 80 44" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4,40 A36,36 0 0,1 76,40" fill="none" stroke="#e8e4dc" stroke-width="7" stroke-linecap="round"/>
+          <path id="fngArc" d="M4,40 A36,36 0 0,1 76,40" fill="none" stroke="#e8e4dc" stroke-width="7" stroke-linecap="round" stroke-dasharray="0 113"/>
+          <line id="fngNeedle" x1="40" y1="40" x2="40" y2="10" stroke="#1a1814" stroke-width="2" stroke-linecap="round" transform="rotate(0,40,40)"/>
+          <circle cx="40" cy="40" r="2.5" fill="#1a1814"/>
+        </svg>
+      </div>
+      <div class="fng-info">
+        <div class="fng-label">Fear &amp; Greed</div>
+        <div class="fng-score"><span id="fngScore">—</span></div>
+        <div id="fngRating" class="fng-rating">Loading…</div>
+      </div>
+    </div>
     <div class="watchlist-pills" id="watchlistPills"></div>
   </div>
 </header>
@@ -2024,6 +2062,63 @@ if (watchlist.length > 0) {
   loadTicker(last);
 }
 
+// ── FEAR & GREED INDEX ────────────────────────────────────────────
+async function loadFearGreed() {
+  try {
+    const proxy = 'https://api.allorigins.win/get?url=' +
+      encodeURIComponent('https://production.dataviz.cnn.io/index/fearandgreed/graphdata');
+    const res = await fetch(proxy);
+    const json = await res.json();
+    const data = JSON.parse(json.contents);
+    const score = Math.round(data.fear_and_greed?.score ?? data.fng_score ?? 50);
+    const rating = data.fear_and_greed?.rating ?? data.fng_classification ?? 'Neutral';
+    renderFearGreed(score, rating);
+  } catch(_) {
+    document.getElementById('fngRating').textContent = 'N/A';
+    document.getElementById('fngScore').textContent = '—';
+  }
+}
+
+function renderFearGreed(score, rating) {
+  document.getElementById('fngScore').textContent = score;
+
+  // Rating label & class
+  const ratingEl = document.getElementById('fngRating');
+  const ratingMap = {
+    'extreme fear': ['Extreme Fear', 'extreme-fear'],
+    'fear':         ['Fear',         'fear'],
+    'neutral':      ['Neutral',      'neutral'],
+    'greed':        ['Greed',        'greed'],
+    'extreme greed':['Extreme Greed','extreme-greed'],
+  };
+  const key = (rating || '').toLowerCase();
+  const [label, cls] = ratingMap[key] || [rating, 'neutral'];
+  ratingEl.textContent = label;
+  ratingEl.className = 'fng-rating ' + cls;
+
+  // Color the arc
+  const colors = {
+    'extreme-fear': '#ef4444',
+    'fear':         '#f97316',
+    'neutral':      '#a3a3a3',
+    'greed':        '#4ade80',
+    'extreme-greed':'#16a34a',
+  };
+  const arcColor = colors[cls] || '#a3a3a3';
+  const arc = document.getElementById('fngArc');
+  const needle = document.getElementById('fngNeedle');
+
+  // Arc: total semicircle length ~113. Fill proportionally to score
+  const filled = (score / 100) * 113;
+  arc.setAttribute('stroke', arcColor);
+  arc.setAttribute('stroke-dasharray', filled + ' ' + (113 - filled));
+
+  // Needle: rotates from -90deg (score=0) to +90deg (score=100)
+  const angle = -90 + (score / 100) * 180;
+  needle.setAttribute('transform', 'rotate(' + angle + ',40,40)');
+}
+
+loadFearGreed();
 </script>
 </body>
 </html>
