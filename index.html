@@ -803,6 +803,173 @@ main {
 .fng-rating.neutral      { color: #5c5751; }
 .fng-rating.greed        { color: #16a34a; }
 .fng-rating.extreme-greed{ color: #15803d; }
+/* ── NAV TABS ─────────────────────────────────────────────────── */
+.nav-tabs-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 32px;
+  display: flex;
+  gap: 4px;
+}
+.nav-tab {
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--txt3);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  margin-bottom: -1px;
+  transition: color .15s, border-color .15s;
+}
+.nav-tab:hover { color: var(--txt); }
+.nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+/* ── SCREENER ─────────────────────────────────────────────────── */
+.screener-wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 40px 32px;
+}
+.screener-title { font-size: 22px; font-weight: 700; color: var(--txt); letter-spacing: -.3px; margin-bottom: 6px; }
+.screener-sub { font-size: 14px; color: var(--txt2); margin-bottom: 24px; line-height: 1.6; }
+
+.screener-filters {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-sm);
+}
+.filter-group { display: flex; flex-direction: column; gap: 6px; }
+.filter-label { font-size: 11px; font-weight: 600; color: var(--txt3); text-transform: uppercase; letter-spacing: .06em; }
+.filter-select {
+  height: 38px;
+  padding: 0 12px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--txt);
+  background: var(--surface2);
+  border: 1.5px solid var(--border2);
+  border-radius: 7px;
+  cursor: pointer;
+  outline: none;
+  min-width: 200px;
+}
+.filter-select:focus { border-color: var(--accent); }
+
+.screener-run-btn {
+  height: 38px;
+  padding: 0 24px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+  align-self: flex-end;
+  white-space: nowrap;
+}
+.screener-run-btn:hover { background: #1d4ed8; }
+.screener-run-btn:disabled { background: #93c5fd; cursor: not-allowed; }
+
+.screener-results-wrap { min-height: 200px; }
+
+.screener-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 60px 24px;
+  text-align: center;
+}
+.screener-loading .loader { width: 32px; height: 32px; }
+.screener-loading-label { font-size: 15px; font-weight: 600; color: var(--txt2); }
+.screener-loading-sub { font-size: 13px; color: var(--txt3); }
+
+.screener-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+.screener-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: box-shadow .15s, transform .15s, border-color .15s;
+  position: relative;
+  overflow: hidden;
+}
+.screener-card:hover { box-shadow: var(--shadow); transform: translateY(-2px); border-color: var(--accent); }
+.screener-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), #22c55e);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.sc-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
+.sc-ticker { font-family: 'DM Mono', monospace; font-size: 15px; font-weight: 600; color: var(--accent); }
+.sc-name { font-size: 13px; font-weight: 600; color: var(--txt); margin-top: 2px; }
+.sc-sector { font-size: 11px; color: var(--txt3); background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 2px 9px; white-space: nowrap; }
+.sc-metrics { display: flex; gap: 8px; margin-bottom: 14px; }
+.sc-metric {
+  flex: 1;
+  background: var(--surface2);
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+}
+.sc-metric-label { font-size: 10px; color: var(--txt3); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; font-weight: 600; }
+.sc-metric-value { font-family: 'DM Mono', monospace; font-size: 15px; font-weight: 600; }
+.sc-metric-value.up { color: #16a34a; }
+.sc-metric-value.down { color: var(--red); }
+.sc-eps-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.sc-eps-pill {
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 20px;
+  font-weight: 600;
+  font-family: 'DM Mono', monospace;
+}
+.sc-eps-pill.up   { background: #dcfce7; color: #166534; }
+.sc-eps-pill.down { background: #fee2e2; color: #991b1b; }
+.sc-eps-pill.flat { background: var(--surface2); color: var(--txt3); }
+.sc-reason { font-size: 12px; color: var(--txt2); line-height: 1.6; border-top: 1px solid var(--border); padding-top: 10px; }
+.sc-cta { font-size: 12px; color: var(--accent); font-weight: 600; margin-top: 10px; }
+
+.screener-meta {
+  font-size: 12px;
+  color: var(--txt3);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.screener-disclaimer {
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 12px;
+  color: #92400e;
+  margin-bottom: 20px;
+  line-height: 1.6;
+}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 </head>
@@ -834,7 +1001,66 @@ main {
   </div>
 </header>
 
+<!-- NAV TABS -->
+<div class="nav-tabs-bar">
+  <button class="nav-tab active" id="tabDashboard" onclick="switchTab('dashboard')">📈 Dashboard</button>
+  <button class="nav-tab" id="tabScreener" onclick="switchTab('screener')">🔍 EPS Growth Screener</button>
+</div>
+
 <main id="mainContent">
+
+<!-- SCREENER PANEL (hidden by default) -->
+<div id="screenerPanel" style="display:none">
+  <div class="screener-wrap">
+    <div class="screener-header">
+      <div>
+        <h2 class="screener-title">EPS Growth Screener</h2>
+        <p class="screener-sub">Find stocks where analysts forecast increasing EPS — both quarterly and annually. Powered by Gemini AI using current analyst consensus data.</p>
+      </div>
+    </div>
+
+    <!-- FILTERS -->
+    <div class="screener-filters">
+      <div class="filter-group">
+        <label class="filter-label">Universe</label>
+        <select id="screenerUniverse" class="filter-select">
+          <option value="sp500_large">S&P 500 — Large Cap</option>
+          <option value="sp500_tech">S&P 500 — Technology</option>
+          <option value="sp500_healthcare">S&P 500 — Healthcare</option>
+          <option value="sp500_financials">S&P 500 — Financials</option>
+          <option value="sp500_consumer">S&P 500 — Consumer</option>
+          <option value="nasdaq100">NASDAQ-100</option>
+          <option value="smallcap">Small &amp; Mid Cap Growth</option>
+          <option value="all">All Sectors — Mixed</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">EPS Growth Criteria</label>
+        <select id="screenerCriteria" class="filter-select">
+          <option value="both">Both Quarterly &amp; Yearly ↑</option>
+          <option value="yearly">Yearly Only ↑</option>
+          <option value="quarterly">Quarterly Only ↑</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Min Growth</label>
+        <select id="screenerGrowth" class="filter-select">
+          <option value="any">Any positive growth</option>
+          <option value="5">≥ 5% growth</option>
+          <option value="10">≥ 10% growth</option>
+          <option value="20">≥ 20% growth</option>
+          <option value="30">≥ 30% growth</option>
+        </select>
+      </div>
+      <button class="screener-run-btn" id="screenerRunBtn" onclick="runScreener()">
+        Run Screener
+      </button>
+    </div>
+
+    <!-- RESULTS -->
+    <div id="screenerResults" class="screener-results-wrap"></div>
+  </div>
+</div>
   <div class="empty-state">
     <div class="empty-icon">📈</div>
     <div class="empty-title">Search any stock ticker</div>
@@ -2135,6 +2361,163 @@ function renderFearGreed(score, rating) {
 }
 
 loadFearGreed();
+
+// ── TAB SWITCHING ─────────────────────────────────────────────────
+function switchTab(tab) {
+  const isDash = tab === 'dashboard';
+  document.getElementById('mainContent').style.display = isDash ? '' : 'none';
+  document.getElementById('screenerPanel').style.display = isDash ? 'none' : '';
+  document.getElementById('tabDashboard').classList.toggle('active', isDash);
+  document.getElementById('tabScreener').classList.toggle('active', !isDash);
+}
+
+// ── EPS GROWTH SCREENER ───────────────────────────────────────────
+async function runScreener() {
+  const universe  = document.getElementById('screenerUniverse').value;
+  const criteria  = document.getElementById('screenerCriteria').value;
+  const minGrowth = document.getElementById('screenerGrowth').value;
+  const btn       = document.getElementById('screenerRunBtn');
+  const results   = document.getElementById('screenerResults');
+
+  btn.disabled = true;
+  btn.textContent = 'Scanning…';
+  results.innerHTML = '<div class="screener-loading">' +
+    '<div class="loader"></div>' +
+    '<div class="screener-loading-label">Scanning analyst consensus estimates…</div>' +
+    '<div class="screener-loading-sub">Gemini is reviewing EPS forecasts across the selected universe. This takes 15–20 seconds.</div>' +
+    '</div>';
+
+  const universeLabels = {
+    sp500_large:    'S&P 500 large-cap stocks',
+    sp500_tech:     'S&P 500 technology sector stocks',
+    sp500_healthcare:'S&P 500 healthcare sector stocks',
+    sp500_financials:'S&P 500 financials sector stocks',
+    sp500_consumer: 'S&P 500 consumer sector stocks',
+    nasdaq100:      'NASDAQ-100 stocks',
+    smallcap:       'small and mid-cap growth stocks',
+    all:            'stocks across all sectors and market caps'
+  };
+  const criteriaLabels = {
+    both:      'both quarterly AND yearly EPS estimates increasing',
+    yearly:    'yearly EPS estimates increasing year-over-year',
+    quarterly: 'quarterly EPS estimates increasing quarter-over-quarter'
+  };
+  const growthLabel = minGrowth === 'any' ? 'any positive growth' : 'at least ' + minGrowth + '% growth';
+
+  const prompt = 'You are a financial analyst with current knowledge of Wall Street consensus EPS estimates. ' +
+    'Identify 12 specific stocks from ' + universeLabels[universe] + ' where analysts currently forecast ' +
+    criteriaLabels[criteria] + ' with ' + growthLabel + ' in EPS estimates. ' +
+    'Use your knowledge of current analyst consensus forecasts as of 2025-2026. ' +
+    'Return ONLY a JSON array (no markdown): ' +
+    '[{"ticker":"AAPL","name":"Apple Inc.","sector":"Technology",' +
+    '"currentPrice":0.00,' +
+    '"quarterlyEPS":[' +
+      '{"period":"2Q25","estimate":0.00},' +
+      '{"period":"3Q25","estimate":0.00},' +
+      '{"period":"4Q25","estimate":0.00},' +
+      '{"period":"1Q26","estimate":0.00}' +
+    '],' +
+    '"yearlyEPS":[' +
+      '{"year":"FY2025","estimate":0.00},' +
+      '{"year":"FY2026","estimate":0.00},' +
+      '{"year":"FY2027","estimate":0.00}' +
+    '],' +
+    '"quarterlyGrowthPct":0.0,' +
+    '"yearlyGrowthPct":0.0,' +
+    '"meetsCriteria":"both",' +
+    '"reason":"One sentence on why this stock has strong EPS growth momentum."}]' +
+    ' Return ONLY the JSON array with 12 stocks. Use real ticker symbols and real consensus estimates.';
+
+  try {
+    const text = await callGemini(prompt, 2500);
+    const match = text.replace(/```json|```/g, '').match(/\[[\s\S]*\]/);
+    if (!match) throw new Error('No results returned');
+    const stocks = JSON.parse(match[0]);
+    renderScreenerResults(stocks, universe, criteria, minGrowth);
+  } catch(e) {
+    results.innerHTML = '<div class="error-state">⚠ Could not fetch screener results. ' + (e.message || 'Try again.') + '</div>';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Run Screener';
+  }
+}
+
+function renderScreenerResults(stocks, universe, criteria, minGrowth) {
+  const results = document.getElementById('screenerResults');
+  if (!stocks || !stocks.length) {
+    results.innerHTML = '<div style="color:var(--txt3);padding:40px;text-align:center">No stocks found matching your criteria.</div>';
+    return;
+  }
+
+  const criteriaIcon = criteria === 'both' ? '⬆⬆ Both Q&A' : criteria === 'yearly' ? '📅 Yearly ⬆' : '📊 Quarterly ⬆';
+
+  let html = '<div class="screener-disclaimer">' +
+    '⚠ Results are generated by Gemini AI using its knowledge of analyst consensus estimates. ' +
+    'Data may not reflect the most recent analyst revisions. Always verify at ' +
+    '<a href="https://www.nasdaq.com/market-activity/earnings" target="_blank" style="color:#92400e">NASDAQ ↗</a> or ' +
+    '<a href="https://www.zacks.com/stocks/industry-rank/sector/technology/computer-and-technology" target="_blank" style="color:#92400e">Zacks ↗</a> before making investment decisions.' +
+    '</div>';
+
+  html += '<div class="screener-meta">' +
+    '<strong>' + stocks.length + ' stocks found</strong> · ' + criteriaIcon +
+    (minGrowth !== 'any' ? ' · Min ' + minGrowth + '% growth' : '') +
+    ' · Click any card to load it in the dashboard' +
+    '</div>';
+
+  html += '<div class="screener-grid">';
+
+  stocks.forEach(function(s) {
+    const qGrowth = s.quarterlyGrowthPct;
+    const yGrowth = s.yearlyGrowthPct;
+    const qCls = qGrowth > 0 ? 'up' : qGrowth < 0 ? 'down' : 'flat';
+    const yCls = yGrowth > 0 ? 'up' : yGrowth < 0 ? 'down' : 'flat';
+    const qSign = qGrowth > 0 ? '+' : '';
+    const ySign = yGrowth > 0 ? '+' : '';
+
+    const qPills = (s.quarterlyEPS || []).map(function(q) {
+      return '<span class="sc-eps-pill flat">$' + (q.estimate || 0).toFixed(2) + ' ' + q.period + '</span>';
+    }).join('');
+
+    const yPills = (s.yearlyEPS || []).map(function(y) {
+      return '<span class="sc-eps-pill flat">$' + (y.estimate || 0).toFixed(2) + ' ' + y.year + '</span>';
+    }).join('');
+
+    html += '<div class="screener-card" onclick="loadFromScreener(\'' + s.ticker + '\')">' +
+      '<div class="sc-header">' +
+        '<div>' +
+          '<div class="sc-ticker">' + s.ticker + '</div>' +
+          '<div class="sc-name">' + s.name + '</div>' +
+        '</div>' +
+        '<span class="sc-sector">' + s.sector + '</span>' +
+      '</div>' +
+      '<div class="sc-metrics">' +
+        '<div class="sc-metric">' +
+          '<div class="sc-metric-label">Qtrly EPS Growth</div>' +
+          '<div class="sc-metric-value ' + qCls + '">' + qSign + (qGrowth || 0).toFixed(1) + '%</div>' +
+        '</div>' +
+        '<div class="sc-metric">' +
+          '<div class="sc-metric-label">Yearly EPS Growth</div>' +
+          '<div class="sc-metric-value ' + yCls + '">' + ySign + (yGrowth || 0).toFixed(1) + '%</div>' +
+        '</div>' +
+        (s.currentPrice ? '<div class="sc-metric"><div class="sc-metric-label">Price</div><div class="sc-metric-value">$' + s.currentPrice.toFixed(2) + '</div></div>' : '') +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--txt3);font-weight:600;margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em">Quarterly Estimates</div>' +
+      '<div class="sc-eps-row">' + qPills + '</div>' +
+      '<div style="font-size:11px;color:var(--txt3);font-weight:600;margin:8px 0 5px;text-transform:uppercase;letter-spacing:.05em">Annual Estimates</div>' +
+      '<div class="sc-eps-row">' + yPills + '</div>' +
+      '<div class="sc-reason">' + (s.reason || '') + '</div>' +
+      '<div class="sc-cta">Click to load full dashboard →</div>' +
+    '</div>';
+  });
+
+  html += '</div>';
+  results.innerHTML = html;
+}
+
+function loadFromScreener(ticker) {
+  switchTab('dashboard');
+  loadTicker(ticker);
+}
 </script>
 </body>
 </html>
